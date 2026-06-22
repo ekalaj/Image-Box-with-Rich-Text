@@ -201,7 +201,8 @@
 </header>
 
 <nav class="tabs" id="tabs">
-  <button data-tab="dashboard" class="active">Dashboard</button>
+  <button data-tab="portfolio" class="active">Portfolio</button>
+  <button data-tab="dashboard">Dashboard</button>
   <button data-tab="schedule">Schedule</button>
   <button data-tab="tasks">Tasks &amp; Phases</button>
   <button data-tab="trades">Trades</button>
@@ -210,8 +211,16 @@
 </nav>
 
 <main>
+  <!-- PORTFOLIO -->
+  <section class="view active" id="view-portfolio">
+    <h2 class="section">Portfolio</h2>
+    <p class="sub">Every project at a glance — active builds and completed sales. Click a row to open it.</p>
+    <div class="grid cards-4" id="portStats" style="margin-bottom:18px"></div>
+    <div class="card" style="padding:0;overflow:hidden"><table id="portTable"></table></div>
+  </section>
+
   <!-- DASHBOARD -->
-  <section class="view active" id="view-dashboard">
+  <section class="view" id="view-dashboard">
     <h2 class="section">Project Dashboard</h2>
     <p class="sub">A live snapshot of your build.</p>
     <div id="soldBanner"></div>
@@ -901,6 +910,72 @@ function saleSummary(p){
           date:s.date,buyer:s.buyer,agent:s.agent,notes:s.notes};
 }
 
+/* ============================================================
+   PORTFOLIO — all projects at a glance
+============================================================ */
+function projMetrics(p){
+  const tasks=p.tasks||[];
+  const progress=tasks.length?Math.round(tasks.reduce((a,t)=>a+(t.progress||0),0)/tasks.length):0;
+  const spent=tasks.reduce((a,t)=>a+(+t.actual||0),0);
+  const est=tasks.reduce((a,t)=>a+(+t.est||0),0);
+  const budget=+p.project.budget||0;
+  const ss=saleSummary(p);
+  const dates=tasks.map(t=>t.end).filter(Boolean).sort();
+  const finish=dates.length?dates[dates.length-1]:null;
+  return {progress,spent,est,budget,ss,finish};
+}
+function goTab(name){
+  $$("#tabs button").forEach(x=>x.classList.toggle("active", x.dataset.tab===name));
+  $$(".view").forEach(v=>v.classList.toggle("active", v.id==="view-"+name));
+}
+function openProject(id){ setActiveProject(id); goTab('dashboard'); }
+window.openProject=openProject;
+
+function renderPortfolio(){
+  const projects=db.projects;
+  const sold=projects.filter(p=>saleSummary(p));
+  const active=projects.filter(p=>!saleSummary(p));
+  const revenue=sold.reduce((a,p)=>a+saleSummary(p).price,0);
+  const profit=sold.reduce((a,p)=>a+saleSummary(p).profit,0);
+  const invested=sold.reduce((a,p)=>a+saleSummary(p).invested,0);
+  const portRoi=invested?profit/invested*100:0;
+  const activeBudget=active.reduce((a,p)=>a+(+p.project.budget||0),0);
+
+  $("#portStats").innerHTML=`
+    ${stat("Projects", projects.length, `<span class="muted" style="font-size:12px">${active.length} active · ${sold.length} sold</span>`)}
+    ${stat("Sold revenue", money(revenue), `<span class="muted" style="font-size:12px">${sold.length} closed</span>`)}
+    ${stat("Net profit (sold)", money(profit), `<span class="muted" style="font-size:12px">${portRoi.toFixed(0)}% blended ROI</span>`)}
+    ${stat("Active pipeline", money(activeBudget), `<span class="muted" style="font-size:12px">${active.length} build${active.length!==1?'s':''} budgeted</span>`)}
+  `;
+
+  const rows=projects.map(p=>{
+    const m=projMetrics(p);
+    const isSold=!!m.ss;
+    const pill=isSold
+      ? `<span class="pill status-done">SOLD</span>`
+      : (m.progress>=100?`<span class="pill status-inprogress">Complete</span>`:`<span class="pill status-notstarted">In progress</span>`);
+    const when=isSold? ('Closed '+fmtDShort(m.ss.date)) : (m.finish? ('Finish '+fmtDShort(m.finish)) : '');
+    return `<tr style="cursor:pointer" onclick="openProject('${p.id}')">
+      <td><b>${esc(p.project.name)}</b><div class="muted" style="font-size:11px">${esc(p.project.address||'')}</div></td>
+      <td>${pill}<div class="muted" style="font-size:11px">${when}</div></td>
+      <td style="width:130px"><div class="bar" style="margin:0"><i style="width:${m.progress}%"></i></div><span class="muted" style="font-size:11px">${m.progress}%</span></td>
+      <td class="num">${money(m.budget)}</td>
+      <td class="num">${money(m.spent)}</td>
+      <td class="num">${isSold?money(m.ss.price):'<span class="muted">—</span>'}</td>
+      <td class="num">${isSold?`<b style="color:${m.ss.profit>=0?'#37c871':'#f0584c'}">${money(m.ss.profit)}</b>`:'<span class="muted">—</span>'}</td>
+      <td class="num">${isSold?m.ss.roi.toFixed(0)+'%':'<span class="muted">—</span>'}</td>
+    </tr>`;
+  }).join("");
+  $("#portTable").innerHTML=`<thead><tr>
+    <th>Project</th><th>Status</th><th>Progress</th><th class="num">Budget</th><th class="num">Spent</th><th class="num">Sale</th><th class="num">Net profit</th><th class="num">ROI</th>
+  </tr></thead><tbody>${rows||`<tr><td colspan="8" class="empty">No projects.</td></tr>`}</tbody>
+  ${sold.length>1?`<tfoot><tr style="border-top:2px solid var(--line);background:var(--panel2)">
+    <td colspan="5"><b>Totals (sold)</b></td>
+    <td class="num"><b>${money(revenue)}</b></td>
+    <td class="num"><b style="color:#37c871">${money(profit)}</b></td>
+    <td class="num"><b>${portRoi.toFixed(0)}%</b></td></tr></tfoot>`:''}`;
+}
+
 function renderDashboard(){
   const tasks=state.tasks;
 
@@ -1474,6 +1549,7 @@ function renderAll(){
   $("#projAddr").textContent=state.project.address||"";
   $("#soldTag").innerHTML = (state.project.sale && state.project.sale.sold)
     ? `<span class="pill status-done" style="font-size:10px;padding:2px 7px">SOLD</span>` : "";
+  renderPortfolio();
   renderDashboard();
   renderGantt();
   renderTasks();
