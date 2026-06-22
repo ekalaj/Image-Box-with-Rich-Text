@@ -1,0 +1,16 @@
+[build]
+  # Static single-file app — nothing to build, serve the repo root as-is.
+  publish = "."
+  command = ""
+
+# Always revalidate the HTML so a redeploy shows up immediately
+# (no stale cached app after you push an update).
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/"
+  [headers.values]
+    Cache-Control = "no-cache"
