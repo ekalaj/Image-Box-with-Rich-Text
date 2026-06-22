@@ -585,6 +585,16 @@ const uid = () => Math.random().toString(36).slice(2,9);
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 
+/* Fault-tolerant storage — never throws, so a browser that blocks localStorage
+   (private mode, some mobile file:// contexts) can't take the whole app down.
+   The app still runs fully; data just won't persist until storage is allowed. */
+const LS = {
+  ok:true,
+  get(k){ try{ return localStorage.getItem(k); }catch(e){ this.ok=false; return null; } },
+  set(k,v){ try{ localStorage.setItem(k,v); return true; }catch(e){ this.ok=false; return false; } },
+  del(k){ try{ localStorage.removeItem(k); }catch(e){ this.ok=false; } }
+};
+
 /* ---------- date helpers (work in local YYYY-MM-DD strings) ---------- */
 const toISO = d => {
   const x = new Date(d);
@@ -836,20 +846,20 @@ function emptyDb(){
 }
 function load(){
   try{
-    const raw = localStorage.getItem(STORE_KEY);
+    const raw = LS.get(STORE_KEY);
     if(raw){ const d=JSON.parse(raw); if(d && Array.isArray(d.projects) && d.projects.length) return d; }
     // migrate an older single-project save, if present
-    const v1 = localStorage.getItem("buildtrack.v1");
+    const v1 = LS.get("buildtrack.v1");
     if(v1){
       const old=JSON.parse(v1);
       const d={ version:2, projects:[{id:uid(),...old}], activeId:null, updatedAt:Date.now(), cloud:null };
       d.activeId=d.projects[0].id;
-      localStorage.setItem(STORE_KEY, JSON.stringify(d));
+      LS.set(STORE_KEY, JSON.stringify(d));
       return d;
     }
   }catch(e){ console.warn("load failed", e); }
   const d=emptyDb();
-  localStorage.setItem(STORE_KEY, JSON.stringify(d));
+  LS.set(STORE_KEY, JSON.stringify(d));
   return d;
 }
 function activeProject(){ return db.projects.find(p=>p.id===db.activeId) || db.projects[0]; }
@@ -860,8 +870,7 @@ function save(){
   db.updatedAt=Date.now();
   clearTimeout(saveTimer);
   saveTimer = setTimeout(()=>{
-    try{ localStorage.setItem(STORE_KEY, JSON.stringify(db)); }
-    catch(e){ toast("⚠ Storage full — remove some photos or back up & reset"); }
+    if(!LS.set(STORE_KEY, JSON.stringify(db))) toast("⚠ Couldn't save — storage full or blocked. Back up your data.");
     if(typeof Cloud!=="undefined") Cloud.queuePush();
   }, 150);
 }
@@ -1769,8 +1778,8 @@ const Cloud = (function(){
   let session=null;                 // {access_token, refresh_token, user_id, expires_at}
   let pushTimer=null, pollTimer=null, status="off";
 
-  function loadSession(){ try{ session=JSON.parse(localStorage.getItem(SESSION_KEY))||null; }catch(e){ session=null; } }
-  function saveSession(){ session? localStorage.setItem(SESSION_KEY,JSON.stringify(session)) : localStorage.removeItem(SESSION_KEY); }
+  function loadSession(){ try{ session=JSON.parse(LS.get(SESSION_KEY))||null; }catch(e){ session=null; } }
+  function saveSession(){ session? LS.set(SESSION_KEY,JSON.stringify(session)) : LS.del(SESSION_KEY); }
   function cfg(){ return db.cloud; }
   function configured(){ return !!(cfg() && cfg().url && cfg().anonKey); }
   function setStatus(s){ status=s; renderCloudStatus(); }
@@ -1781,7 +1790,7 @@ const Cloud = (function(){
     if(auth && session) headers["Authorization"]="Bearer "+session.access_token;
     return fetch(base()+path, {...opts, headers});
   }
-  function persistLocal(){ try{ localStorage.setItem(STORE_KEY,JSON.stringify(db)); }catch(e){} }
+  function persistLocal(){ LS.set(STORE_KEY,JSON.stringify(db)); }
 
   async function refresh(){
     if(!session) return false;
@@ -1910,6 +1919,7 @@ $("#c_signout").addEventListener("click",()=>{ Cloud.signOut(); openCloud(); toa
 
 renderAll();
 Cloud.init();
+if(!LS.ok) setTimeout(()=>toast("⚠ This browser is blocking storage — changes won't be saved. Try a normal (non-private) window or a hosted URL."), 900);
 </script>
 </body>
 </html>
