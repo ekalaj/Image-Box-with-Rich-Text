@@ -206,6 +206,7 @@
   <button data-tab="tasks">Tasks &amp; Phases</button>
   <button data-tab="trades">Trades</button>
   <button data-tab="budget">Budget</button>
+  <button data-tab="costref">Cost Reference</button>
 </nav>
 
 <main>
@@ -286,6 +287,18 @@
     <div class="card" style="padding:0;overflow:hidden">
       <table id="budgetTable"></table>
     </div>
+  </section>
+
+  <!-- COST REFERENCE -->
+  <section class="view" id="view-costref">
+    <h2 class="section">Cost Reference</h2>
+    <p class="sub">South FL price ranges to sanity-check sub bids. Shared across all your projects — refine the numbers as you learn your real costs.</p>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      <input id="crSearch" class="mini" placeholder="Search item or trade…" style="min-width:240px" />
+      <button class="btn" id="btnAddCostItem">+ Add reference item</button>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden"><table id="costTable"></table></div>
+    <p class="muted" style="font-size:12px;margin-top:10px">Seeded ranges are industry ballparks for the Broward County area, not live quotes — refine them with your own bids. <b>“Bid avg”</b> is the average of the bids you’ve logged for that line.</p>
   </section>
 </main>
 
@@ -492,6 +505,43 @@
   </div>
 </div>
 
+<!-- COST ITEM MODAL -->
+<div class="modal-bg" id="costModal">
+  <div class="modal">
+    <header><h3 id="costModalTitle">Cost item</h3><button class="x" data-close>×</button></header>
+    <div class="body">
+      <div class="field-row">
+        <div class="field"><label>Item / scope</label><input id="cr_item" placeholder="e.g. Impact windows (NOA)" /></div>
+        <div class="field"><label>Trade</label><input id="cr_trade" placeholder="e.g. Windows & Doors" /></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Unit</label><input id="cr_unit" placeholder="per sq ft / per LF / each / lump" /></div>
+        <div class="field"><label>Low ($)</label><input type="number" id="cr_low" step="0.01" min="0" /></div>
+        <div class="field"><label>Average ($)</label><input type="number" id="cr_avg" step="0.01" min="0" /></div>
+        <div class="field"><label>High ($)</label><input type="number" id="cr_high" step="0.01" min="0" /></div>
+      </div>
+      <div class="field"><label>Notes</label><textarea id="cr_notes" placeholder="What's included, allowances, assumptions…"></textarea></div>
+      <hr style="border:none;border-top:1px solid var(--line);margin:6px 0 14px" />
+      <h4 style="margin:0 0 8px">Logged bids <span class="muted" style="font-weight:400;font-size:12px">— compared to the range above</span></h4>
+      <div id="cr_bids"></div>
+      <div class="field-row" style="align-items:end;margin-top:12px">
+        <div class="field" style="margin-bottom:0;flex:1.4"><label>Sub / company</label><input id="cb_sub" placeholder="Company" /></div>
+        <div class="field" style="margin-bottom:0"><label>Bid (per unit)</label><input type="number" id="cb_price" step="0.01" min="0" /></div>
+        <div class="field" style="margin-bottom:0"><label>Date</label><input type="date" id="cb_date" /></div>
+        <button class="btn" id="cb_add">Add bid</button>
+      </div>
+      <div class="field" style="margin-top:10px;margin-bottom:0"><label>Bid note (optional)</label><input id="cb_note" placeholder="Scope, inclusions, exclusions…" /></div>
+    </div>
+    <footer>
+      <button class="btn danger" id="cr_delete">Delete item</button>
+      <div class="row-actions">
+        <button class="btn ghost" data-close>Close</button>
+        <button class="btn" id="cr_save">Save item</button>
+      </div>
+    </footer>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -628,12 +678,13 @@ function seedProject(){
    state = a live pointer to the ACTIVE project, so all view code below
    keeps using state.phases / state.tasks / state.trades unchanged. */
 let db = load();
+if(!Array.isArray(db.costRef)) db.costRef = seedCostRef();   // backfill for older saves
 let state;
 syncPointer();
 
 function emptyDb(){
   const p = seedProject();
-  return { version:2, projects:[p], activeId:p.id, updatedAt:Date.now(), cloud:null };
+  return { version:2, projects:[p], activeId:p.id, costRef:seedCostRef(), updatedAt:Date.now(), cloud:null };
 }
 function load(){
   try{
@@ -1181,9 +1232,9 @@ $("#importFile").addEventListener("change",e=>{
     try{
       const data=JSON.parse(ev.target.result);
       if(Array.isArray(data.projects) && data.projects.length){
-        db={version:2,projects:data.projects,activeId:data.activeId||data.projects[0].id,updatedAt:Date.now(),cloud:db.cloud};
+        db={version:2,projects:data.projects,activeId:data.activeId||data.projects[0].id,costRef:Array.isArray(data.costRef)?data.costRef:(db.costRef||seedCostRef()),updatedAt:Date.now(),cloud:db.cloud};
       } else if(data.project && Array.isArray(data.tasks)){
-        db={version:2,projects:[{id:uid(),...data}],activeId:null,updatedAt:Date.now(),cloud:db.cloud};
+        db={version:2,projects:[{id:uid(),...data}],activeId:null,costRef:db.costRef||seedCostRef(),updatedAt:Date.now(),cloud:db.cloud};
         db.activeId=db.projects[0].id;
       } else throw new Error("bad file");
       syncPointer(); save(); renderAll(); toast("Backup restored");
@@ -1224,7 +1275,138 @@ function renderAll(){
   renderTasks();
   renderTrades();
   renderBudget();
+  renderCostRef();
 }
+
+/* ============================================================
+   Cost Reference — shared price database + bid comparison
+============================================================ */
+function seedCostRef(){
+  const I=(trade,item,unit,low,avg,high,notes)=>({id:uid(),trade,item,unit,low,avg,high,notes:notes||"",bids:[]});
+  return [
+    I("Sitework","Lot clearing & grubbing","lump (typical lot)",5000,9000,16000),
+    I("Sitework","Structural fill & compaction","per cu yd",25,38,55),
+    I("Concrete","Slab on grade (monolithic)","per sq ft",7,9.5,13),
+    I("Concrete","Tie beam & columns","per LF",30,45,65),
+    I("Masonry","CBS block wall","per sq ft wall",12,16,22),
+    I("Framing","Engineered roof trusses","per sq ft roof",8,11,16),
+    I("Framing","Hurricane straps / tie-downs","each",4,7,12),
+    I("Roofing","Concrete/clay tile roof (HVHZ)","per sq ft",12,17,25),
+    I("Roofing","Underlayment / dry-in","per sq ft",1.5,2.5,4),
+    I("Windows & Doors","Impact windows (Miami-Dade NOA)","per sq ft",55,75,95),
+    I("Windows & Doors","Impact entry door","each",1800,2800,4500),
+    I("Windows & Doors","Impact sliding door (3-panel)","each",3500,5500,8500),
+    I("Plumbing","Plumbing rough + trim","per fixture",1200,1800,2800),
+    I("HVAC","AC system installed","per ton",1800,2400,3200),
+    I("HVAC","Ductwork","per sq ft conditioned",6,9,13),
+    I("Electrical","Electrical rough + trim","per sq ft",5,8,12),
+    I("Electrical","Service / 200A panel","each",2500,3800,6000),
+    I("Low Voltage","Structured wiring","per drop",150,225,350),
+    I("Insulation","Open-cell spray foam","per sq ft",1.5,2.5,4),
+    I("Insulation","Batt insulation","per sq ft",0.8,1.2,2),
+    I("Drywall","Hang, tape & finish","per sq ft",2,3,4.5),
+    I("Stucco","3-coat stucco","per sq ft wall",6,9,13),
+    I("Paint","Interior paint","per sq ft floor",2,3.5,5),
+    I("Paint","Exterior paint","per sq ft wall",1.5,2.5,4),
+    I("Tile/Flooring","Porcelain tile install","per sq ft",9,13,18),
+    I("Tile/Flooring","Wood / LVP install","per sq ft",6,10,16),
+    I("Cabinets/Counters","Kitchen cabinets","per LF",250,450,800),
+    I("Cabinets/Counters","Quartz countertops","per sq ft",60,90,140),
+    I("Exterior","Paver driveway","per sq ft",12,18,28),
+  ];
+}
+function fmtCost(n){ n=+n; if(!isFinite(n)) return "—";
+  return "$"+(n>=100? n.toLocaleString(undefined,{maximumFractionDigits:0})
+                     : n.toLocaleString(undefined,{maximumFractionDigits:2})); }
+function bidVerdict(price,item){
+  price=+price; if(!price) return null;
+  if(price < +item.low) return {label:"Below range", cls:"status-done"};
+  if(price <= +item.high) return {label:"In range", cls:"status-inprogress"};
+  return {label:"Above range", cls:"status-blocked"};
+}
+let crSearchVal="";
+function renderCostRef(){
+  const q=crSearchVal.trim().toLowerCase();
+  let items=db.costRef.slice();
+  if(q) items=items.filter(it=>(it.item+" "+it.trade).toLowerCase().includes(q));
+  items.sort((a,b)=>(a.trade+a.item).localeCompare(b.trade+b.item));
+  const rows=items.map(it=>{
+    const bids=it.bids||[];
+    const avgBid=bids.length? bids.reduce((s,b)=>s+(+b.price||0),0)/bids.length : null;
+    return `<tr style="cursor:pointer" onclick="openCostItem('${it.id}')">
+      <td><b>${esc(it.item)}</b></td>
+      <td class="muted">${esc(it.trade)}</td>
+      <td class="muted nowrap">${esc(it.unit)}</td>
+      <td class="num">${fmtCost(it.low)}</td>
+      <td class="num"><b>${fmtCost(it.avg)}</b></td>
+      <td class="num">${fmtCost(it.high)}</td>
+      <td class="num">${bids.length? fmtCost(avgBid)+` <span class="muted" style="font-size:11px">(${bids.length})</span>`:'<span class="muted">—</span>'}</td>
+      <td class="right"><button class="btn ghost sm" onclick="event.stopPropagation();openCostItem('${it.id}')">Open</button></td>
+    </tr>`;
+  }).join("");
+  $("#costTable").innerHTML=`<thead><tr>
+    <th>Item</th><th>Trade</th><th>Unit</th><th class="num">Low</th><th class="num">Avg</th><th class="num">High</th><th class="num">Bid avg</th><th></th>
+  </tr></thead><tbody>${rows||`<tr><td colspan="8" class="empty">No items match.</td></tr>`}</tbody>`;
+}
+$("#crSearch").addEventListener("input",e=>{ crSearchVal=e.target.value; renderCostRef(); });
+$("#btnAddCostItem").addEventListener("click",()=>openCostItem(null));
+
+let editingCost=null;
+function openCostItem(id){
+  editingCost = id? db.costRef.find(c=>c.id===id) : null;
+  const c=editingCost||{item:"",trade:"",unit:"per sq ft",low:"",avg:"",high:"",notes:"",bids:[]};
+  $("#costModalTitle").textContent=editingCost?"Edit cost item":"New cost item";
+  $("#cr_item").value=c.item; $("#cr_trade").value=c.trade; $("#cr_unit").value=c.unit;
+  $("#cr_low").value=c.low; $("#cr_avg").value=c.avg; $("#cr_high").value=c.high; $("#cr_notes").value=c.notes||"";
+  $("#cb_date").value=todayISO(); $("#cb_sub").value=""; $("#cb_price").value=""; $("#cb_note").value="";
+  $("#cr_delete").style.display=editingCost?"":"none";
+  renderBidList();
+  openModal("#costModal");
+}
+window.openCostItem=openCostItem;
+function renderBidList(){
+  const c=editingCost;
+  if(!c || !c.bids || !c.bids.length){ $("#cr_bids").innerHTML=`<p class="muted" style="font-size:13px;margin:4px 0">No bids logged yet. Add one below.</p>`; return; }
+  $("#cr_bids").innerHTML=c.bids.slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(b=>{
+    const v=bidVerdict(b.price,c);
+    return `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)">
+      <div style="flex:1">
+        <div style="font-weight:600;font-size:13px">${esc(b.sub||'—')} — ${fmtCost(b.price)} <span class="muted" style="font-weight:400">/ ${esc(c.unit)}</span></div>
+        <div class="muted" style="font-size:11px">${b.date?fmtDShort(b.date):''}${b.note?' · '+esc(b.note):''}</div>
+      </div>
+      ${v?`<span class="pill ${v.cls}">${v.label}</span>`:''}
+      <button class="btn danger sm" onclick="rmBid('${b.id}')">×</button>
+    </div>`;
+  }).join("");
+}
+window.rmBid=id=>{ if(!editingCost) return; editingCost.bids=editingCost.bids.filter(b=>b.id!==id); save(); renderBidList(); renderCostRef(); };
+$("#cb_add").addEventListener("click",()=>{
+  if(!editingCost){ toast("Save the item first, then log bids"); return; }
+  const sub=$("#cb_sub").value.trim(), price=+$("#cb_price").value;
+  if(!sub||!price){ toast("Enter a sub name and bid amount"); return; }
+  editingCost.bids.push({id:uid(),sub,price,date:$("#cb_date").value||todayISO(),note:$("#cb_note").value.trim()});
+  $("#cb_sub").value=""; $("#cb_price").value=""; $("#cb_note").value="";
+  save(); renderBidList(); renderCostRef(); toast("Bid logged");
+});
+$("#cr_save").addEventListener("click",()=>{
+  const item=$("#cr_item").value.trim();
+  if(!item){ toast("Name the item"); return; }
+  const data={ item, trade:$("#cr_trade").value.trim(), unit:$("#cr_unit").value.trim()||"each",
+    low:+$("#cr_low").value||0, avg:+$("#cr_avg").value||0, high:+$("#cr_high").value||0, notes:$("#cr_notes").value.trim() };
+  if(editingCost){ Object.assign(editingCost,data); save(); renderCostRef(); toast("Saved"); closeModal(); }
+  else {
+    editingCost={id:uid(),...data,bids:[]}; db.costRef.push(editingCost);
+    save(); renderCostRef();
+    $("#costModalTitle").textContent="Edit cost item"; $("#cr_delete").style.display="";
+    renderBidList(); toast("Saved — now log bids below, or Close");
+  }
+});
+$("#cr_delete").addEventListener("click",()=>{
+  if(!editingCost) return;
+  if(!confirm(`Delete “${editingCost.item}” and its ${editingCost.bids.length} logged bid(s)?`)) return;
+  db.costRef=db.costRef.filter(c=>c.id!==editingCost.id);
+  save(); closeModal(); renderCostRef(); toast("Item deleted");
+});
 
 /* ============================================================
    Multi-project switching
@@ -1326,7 +1508,7 @@ const Cloud = (function(){
     if(!configured()||!session) return;
     await ensureToken();
     const body=[{user_id:session.user_id,
-      data:{version:db.version,projects:db.projects,activeId:db.activeId,updatedAt:db.updatedAt},
+      data:{version:db.version,projects:db.projects,activeId:db.activeId,costRef:db.costRef,updatedAt:db.updatedAt},
       updated_at:new Date(db.updatedAt).toISOString()}];
     const opt={method:"POST",headers:{Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(body)};
     let res=await api("/rest/v1/app_state",opt);
@@ -1336,6 +1518,7 @@ const Cloud = (function(){
   function adopt(data){
     db.version=data.version||2; db.projects=data.projects;
     db.activeId=(data.projects.find(p=>p.id===data.activeId)?data.activeId:(data.projects[0]&&data.projects[0].id));
+    db.costRef=Array.isArray(data.costRef)?data.costRef:(db.costRef||seedCostRef());
     db.updatedAt=data.updatedAt; persistLocal(); syncPointer(); renderAll();
   }
   async function initialSync(){
