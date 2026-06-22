@@ -602,8 +602,9 @@ const money = n => "$"+(Number(n)||0).toLocaleString(undefined,{maximumFractionD
    Seed data — realistic Ft. Lauderdale, FL custom home build
 ============================================================ */
 function seedProject(){
-  const start = todayISO();
-  // build relative dates from "start"
+  // 900 Guava is a real, in-flight build — started ~3 months ago, currently in
+  // MEP rough-ins (today ≈ day 95 of the schedule) with finishes still ahead.
+  const start = addDays(todayISO(), -95);
   const D = n => addDays(start, n);
 
   const phases = [
@@ -621,80 +622,87 @@ function seedProject(){
   ];
 
   const trades = [
-    {id:"tr_gc",    type:"General Contractor", company:"You / GC",            contact:"Project Owner", phone:"", email:"", license:"", rate:0, color:"#e7ebf0", notes:"Self-managed build."},
-    {id:"tr_site",  type:"Site/Excavation",   company:"Broward Site Works",   contact:"Luis",  phone:"(954) 555-0110", email:"", license:"", rate:1800, color:"#8a94a6", notes:"Clearing, fill, compaction."},
-    {id:"tr_conc",  type:"Concrete",          company:"Atlantic Concrete",    contact:"Marco", phone:"(954) 555-0120", email:"", license:"", rate:0,    color:"#b07a4a", notes:"Slab + tie beams."},
-    {id:"tr_mason", type:"Masonry / Block",   company:"Coastal Masonry",      contact:"Hector",phone:"(954) 555-0130", email:"", license:"", rate:0,    color:"#c0883f", notes:"CBS block walls."},
-    {id:"tr_frame", type:"Framing/Trusses",   company:"Gulfstream Framing",   contact:"Dale",  phone:"(954) 555-0140", email:"", license:"", rate:0,    color:"#caa15a", notes:"Roof trusses + tie-downs."},
-    {id:"tr_roof",  type:"Roofing",           company:"Sunrise Roofing",      contact:"Tom",   phone:"(954) 555-0150", email:"", license:"CCC-000", rate:0, color:"#d65f5f", notes:"Tile roof, HVHZ rated."},
-    {id:"tr_win",   type:"Windows & Doors",   company:"Impact Glass FL",      contact:"Rosa",  phone:"(954) 555-0160", email:"", license:"", rate:0,    color:"#5aa6d6", notes:"Miami-Dade NOA impact units."},
-    {id:"tr_plumb", type:"Plumber",           company:"Tidewater Plumbing",   contact:"Greg",  phone:"(954) 555-0170", email:"", license:"CFC-000", rate:0, color:"#7c6bd6", notes:"Rough + trim."},
-    {id:"tr_elec",  type:"Electrician",       company:"Sunshine Electric",    contact:"Priya", phone:"(954) 555-0180", email:"", license:"EC-000", rate:0, color:"#f5b13d", notes:"Rough + trim + panel."},
-    {id:"tr_hvac",  type:"HVAC",              company:"CoolBreeze A/C",       contact:"Sam",   phone:"(954) 555-0190", email:"", license:"CAC-000", rate:0, color:"#4fb6c8", notes:"Ductwork + condensers."},
-    {id:"tr_lv",    type:"Low Voltage",       company:"SmartHome Wiring",     contact:"Kevin", phone:"(954) 555-0200", email:"", license:"", rate:0,    color:"#9b6bff", notes:"Network, security, AV."},
-    {id:"tr_dry",   type:"Drywall",           company:"Pro Drywall",          contact:"Andre", phone:"(954) 555-0210", email:"", license:"", rate:0,    color:"#5fb98a", notes:"Hang, tape, finish."},
-    {id:"tr_paint", type:"Painter",           company:"Coastal Coatings",     contact:"Maria", phone:"(954) 555-0220", email:"", license:"", rate:0,    color:"#6fae5a", notes:"Interior + exterior."},
-    {id:"tr_tile",  type:"Tile/Flooring",     company:"Las Olas Flooring",    contact:"Nina",  phone:"(954) 555-0230", email:"", license:"", rate:0,    color:"#4f8cff", notes:"Porcelain + wood."},
-    {id:"tr_cab",   type:"Cabinets/Counters", company:"Riverwalk Cabinetry",  contact:"Paul",  phone:"(954) 555-0240", email:"", license:"", rate:0,    color:"#c08a4f", notes:"Kitchen + baths."},
-    {id:"tr_stucco",type:"Stucco",            company:"Florida Stucco Co",    contact:"Jorge", phone:"(954) 555-0250", email:"", license:"", rate:0,    color:"#caa15a", notes:"3-coat exterior."},
+    {id:"tr_gc",    type:"General Contractor", company:"You / GC",            contact:"Project Owner",phone:"",               email:"",                            license:"",            rate:0,     color:"#e7ebf0", notes:"Self-managed (owner-builder permit)."},
+    {id:"tr_site",  type:"Site/Excavation",   company:"Broward Site Works",   contact:"Luis Ramirez", phone:"(954) 555-0110", email:"luis@browardsite.com",        license:"",            rate:21000, color:"#8a94a6", notes:"Clearing, fill & compaction. Paid in full."},
+    {id:"tr_conc",  type:"Concrete",          company:"Atlantic Concrete",    contact:"Marco Diaz",   phone:"(954) 555-0120", email:"marco@atlanticconcrete.com",  license:"",            rate:60500, color:"#b07a4a", notes:"Slab + tie beams. Slab inspection passed."},
+    {id:"tr_mason", type:"Masonry / Block",   company:"Coastal Masonry",      contact:"Hector Lopez", phone:"(954) 555-0130", email:"hector@coastalmasonry.com",   license:"",            rate:39800, color:"#c0883f", notes:"CBS block walls — complete."},
+    {id:"tr_frame", type:"Framing/Trusses",   company:"Gulfstream Framing",   contact:"Dale Foster",  phone:"(954) 555-0140", email:"dale@gulfstreamframing.com",  license:"",            rate:27200, color:"#caa15a", notes:"Roof trusses + tie-downs. Strap insp. passed."},
+    {id:"tr_roof",  type:"Roofing",           company:"Sunrise Roofing",      contact:"Tom Becker",   phone:"(954) 555-0150", email:"tom@sunriseroof.com",         license:"CCC-1331284", rate:68500, color:"#d65f5f", notes:"HVHZ tile roof — complete & inspected."},
+    {id:"tr_win",   type:"Windows & Doors",   company:"Impact Glass FL",      contact:"Rosa Nunez",   phone:"(954) 555-0160", email:"rosa@impactglassfl.com",      license:"",            rate:62000, color:"#5aa6d6", notes:"⚠ 2 large sliders backordered ~3 wks (NOA)."},
+    {id:"tr_plumb", type:"Plumber",           company:"Tidewater Plumbing",   contact:"Greg Hall",    phone:"(954) 555-0170", email:"greg@tidewaterplumb.com",     license:"CFC-1428805", rate:41000, color:"#7c6bd6", notes:"Rough top-out passed. Trim contracted."},
+    {id:"tr_elec",  type:"Electrician",       company:"Sunshine Electric",    contact:"Priya Shah",   phone:"(954) 555-0180", email:"priya@sunshineelec.com",      license:"EC-13007742", rate:51000, color:"#f5b13d", notes:"Rough ~70%. Panel & service set."},
+    {id:"tr_hvac",  type:"HVAC",              company:"CoolBreeze A/C",       contact:"Sam Ortiz",    phone:"(954) 555-0190", email:"sam@coolbreezeac.com",        license:"CAC-1819442", rate:42000, color:"#4fb6c8", notes:"Ductwork + 2 condensers. Rough ~55%."},
+    {id:"tr_lv",    type:"Low Voltage",       company:"SmartHome Wiring",     contact:"Kevin Tran",   phone:"(954) 555-0200", email:"kevin@smarthomewire.com",     license:"",            rate:14000, color:"#9b6bff", notes:"Network, cameras, AV. Pulling now."},
+    {id:"tr_dry",   type:"Drywall",           company:"Pro Drywall",          contact:"Andre Paul",   phone:"(954) 555-0210", email:"andre@prodrywallfl.com",      license:"",            rate:39000, color:"#5fb98a", notes:"Hang, tape, finish. Scheduled."},
+    {id:"tr_paint", type:"Painter",           company:"Coastal Coatings",     contact:"Maria Vega",   phone:"(954) 555-0220", email:"maria@coastalcoatings.com",   license:"",            rate:0,     color:"#6fae5a", notes:"Interior + exterior."},
+    {id:"tr_tile",  type:"Tile/Flooring",     company:"Las Olas Flooring",    contact:"Nina Brooks",  phone:"(954) 555-0230", email:"nina@lasolasfloor.com",       license:"",            rate:0,     color:"#4f8cff", notes:"Porcelain main areas, wood in bedrooms."},
+    {id:"tr_cab",   type:"Cabinets/Counters", company:"Riverwalk Cabinetry",  contact:"Paul Greer",   phone:"(954) 555-0240", email:"paul@riverwalkcab.com",       license:"",            rate:0,     color:"#c08a4f", notes:"Kitchen + baths. Ordered, 6-wk lead."},
+    {id:"tr_stucco",type:"Stucco",            company:"Florida Stucco Co",    contact:"Jorge Mena",   phone:"(954) 555-0250", email:"jorge@flstucco.com",          license:"",            rate:34000, color:"#caa15a", notes:"3-coat exterior — in progress."},
   ];
 
-  // tasks: relative day offsets create realistic parallel/overlapping work
-  const T = (name,ph,tr,s,len,prog,status,deps,est) => ({
+  // status / progress / actuals reflect a build ~3 months in (today ≈ day 95)
+  const T = (name,ph,tr,s,len,status,prog,est,actual,notes) => ({
     id:uid(), name, phaseId:ph, tradeId:tr, start:D(s), end:D(s+len),
-    progress:prog, status, dependsOn:deps||[], est:est||0, actual:0, notes:"", photos:[]
+    progress:prog, status, dependsOn:[], est, actual:actual||0, notes:notes||"", photos:[]
   });
 
   const tasks = [
-    T("Pull building permit","ph_permit","tr_gc",0,20,40,"inprogress",[],3500),
-    T("Survey & site clearing","ph_permit","tr_site",14,6,0,"notstarted",[],8000),
-    T("Fill, grade & compaction","ph_permit","tr_site",20,5,0,"notstarted",[],12000),
+    // ---- Permitting & site prep (done) ----
+    T("Pull building permit","ph_permit","tr_gc",0,25,"done",100,3800,3800,"Permit #BLD-2026-01142 issued. Owner-builder."),
+    T("Survey & site clearing","ph_permit","tr_site",18,6,"done",100,8000,7800,"Boundary + topo survey on file."),
+    T("Fill, grade & compaction","ph_permit","tr_site",24,6,"done",100,12000,13200,"~140 cu yd fill; density test passed."),
 
-    T("Form & pour slab","ph_found","tr_conc",26,7,0,"notstarted",[],45000),
-    T("Slab cure & inspection","ph_found","tr_gc",33,5,0,"notstarted",[],0),
+    // ---- Foundation & slab (done) ----
+    T("Form & pour slab","ph_found","tr_conc",30,8,"done",100,45000,46500,"Monolithic slab. +$1.5k for upgraded vapor barrier."),
+    T("Slab cure & inspection","ph_found","tr_gc",38,4,"done",100,0,0,"Foundation inspection passed."),
 
-    T("CBS block walls — 1st floor","ph_shell","tr_mason",38,12,0,"notstarted",[],38000),
-    T("Tie beam & columns pour","ph_shell","tr_conc",50,5,0,"notstarted",[],14000),
+    // ---- Structure & shell (done) ----
+    T("CBS block walls — 1st floor","ph_shell","tr_mason",42,13,"done",100,38000,39800,"8\" CBS, cells grouted per plan."),
+    T("Tie beam & columns pour","ph_shell","tr_conc",55,5,"done",100,14000,14000,"Tie-beam inspection passed."),
 
-    T("Set roof trusses","ph_roof","tr_frame",55,6,0,"notstarted",[],26000),
-    T("Hurricane straps & tie-downs","ph_roof","tr_frame",61,3,0,"notstarted",[],0),
-    T("Roof sheathing & dry-in","ph_roof","tr_roof",64,5,0,"notstarted",[],0),
-    T("Tile roof install","ph_roof","tr_roof",72,10,0,"notstarted",[],58000),
+    // ---- Roofing & dry-in (done) ----
+    T("Set roof trusses","ph_roof","tr_frame",60,6,"done",100,26000,27200,"Crane set; engineered trusses."),
+    T("Hurricane straps & tie-downs","ph_roof","tr_frame",66,3,"done",100,0,0,"Strapping inspection passed."),
+    T("Roof sheathing & dry-in","ph_roof","tr_roof",69,5,"done",100,9000,9500,"Nailing inspected; peel-and-stick down."),
+    T("Tile roof install","ph_roof","tr_roof",74,12,"done",100,58000,59000,"Concrete tile (HVHZ). Final roof inspection passed."),
 
-    T("Install impact windows & doors","ph_window","tr_win",69,8,0,"notstarted",[],62000),
+    // ---- Impact windows & doors (BLOCKED — slider backorder) ----
+    T("Install impact windows & doors","ph_window","tr_win",72,33,"blocked",60,62000,38000,"Windows set & dried-in. 2 large sliders BACKORDERED ~3 wks (NOA unit). Holding up drywall."),
 
-    // ---- Parallel MEP rough-ins (the side-by-side crews) ----
-    T("Plumbing rough-in","ph_rough","tr_plumb",78,9,0,"notstarted",[],32000),
-    T("Electrical rough-in","ph_rough","tr_elec",78,10,0,"notstarted",[],40000),
-    T("HVAC ductwork & rough-in","ph_rough","tr_hvac",80,8,0,"notstarted",[],36000),
-    T("Low-voltage / smart home rough","ph_rough","tr_lv",82,6,0,"notstarted",[],14000),
+    // ---- MEP rough-ins (HAPPENING NOW — parallel crews) ----
+    T("Plumbing rough-in","ph_rough","tr_plumb",86,9,"done",100,32000,32000,"DWV / top-out inspection passed."),
+    T("Electrical rough-in","ph_rough","tr_elec",88,12,"inprogress",70,40000,0,"~70% done. Panel & service set. Billed on completion."),
+    T("HVAC ductwork & rough-in","ph_rough","tr_hvac",90,10,"inprogress",55,38000,0,"Attic ductwork run; condenser pads poured."),
+    T("Low-voltage / smart home rough","ph_rough","tr_lv",93,8,"inprogress",30,14000,0,"Data/coax + camera rough; AV pending."),
 
-    T("Rough MEP inspections","ph_insp1","tr_gc",90,4,0,"notstarted",[],0),
+    // ---- Rough inspections (upcoming) ----
+    T("Rough MEP inspections","ph_insp1","tr_gc",102,5,"notstarted",0,0,0,"Schedule once elec + HVAC rough complete."),
 
-    T("Insulation","ph_close","tr_dry",95,4,0,"notstarted",[],11000),
-    T("Drywall hang & finish","ph_close","tr_dry",99,12,0,"notstarted",[],28000),
+    // ---- Insulation & drywall (upcoming) ----
+    T("Insulation","ph_close","tr_dry",108,4,"notstarted",0,11000,0,"Waiting on sliders + rough sign-off."),
+    T("Drywall hang & finish","ph_close","tr_dry",112,12,"notstarted",0,28000,0,""),
 
-    // ---- Parallel interior finishes ----
-    T("Interior paint — primer/base","ph_finish","tr_paint",112,7,0,"notstarted",[],16000),
-    T("Tile & flooring","ph_finish","tr_tile",116,14,0,"notstarted",[],42000),
-    T("Cabinets & countertops","ph_finish","tr_cab",122,10,0,"notstarted",[],55000),
+    // ---- Interior finishes (upcoming) ----
+    T("Interior paint — primer/base","ph_finish","tr_paint",125,7,"notstarted",0,16000,0,""),
+    T("Tile & flooring","ph_finish","tr_tile",129,14,"notstarted",0,42000,0,"Porcelain selected; wood for bedrooms."),
+    T("Cabinets & countertops","ph_finish","tr_cab",135,10,"notstarted",0,55000,0,"Cabinets ordered — 6-week lead time."),
 
-    // ---- Parallel exterior work ----
-    T("Exterior stucco — 3 coat","ph_ext","tr_stucco",92,15,0,"notstarted",[],34000),
-    T("Exterior paint","ph_ext","tr_paint",110,6,0,"notstarted",[],12000),
-    T("Driveway & hardscape","ph_ext","tr_conc",125,7,0,"notstarted",[],22000),
+    // ---- Exterior & site ----
+    T("Exterior stucco — 3 coat","ph_ext","tr_stucco",95,16,"inprogress",40,34000,12000,"Scratch + brown coat on 2 of 4 elevations."),
+    T("Exterior paint","ph_ext","tr_paint",122,6,"notstarted",0,12000,0,""),
+    T("Driveway & hardscape","ph_ext","tr_conc",132,7,"notstarted",0,22000,0,""),
 
-    // ---- Final trim-out (parallel) ----
-    T("Plumbing trim & fixtures","ph_final","tr_plumb",132,5,0,"notstarted",[],9000),
-    T("Electrical trim & fixtures","ph_final","tr_elec",132,6,0,"notstarted",[],11000),
-    T("HVAC start-up & balance","ph_final","tr_hvac",133,3,0,"notstarted",[],4000),
-    T("Final paint touch-up","ph_final","tr_paint",136,4,0,"notstarted",[],3000),
-    T("Final inspection & CO","ph_final","tr_gc",142,5,0,"notstarted",[],0),
+    // ---- Final trim-out (upcoming) ----
+    T("Plumbing trim & fixtures","ph_final","tr_plumb",140,5,"notstarted",0,9000,0,""),
+    T("Electrical trim & fixtures","ph_final","tr_elec",140,6,"notstarted",0,11000,0,""),
+    T("HVAC start-up & balance","ph_final","tr_hvac",141,3,"notstarted",0,4000,0,""),
+    T("Final paint touch-up","ph_final","tr_paint",144,4,"notstarted",0,3000,0,""),
+    T("Final inspection & C.O.","ph_final","tr_gc",150,5,"notstarted",0,0,0,"Target C.O. ~8 weeks out."),
   ];
 
   return {
     id: uid(),
-    project:{ name:"900 Guava", address:"900 Guava, Fort Lauderdale, FL", start, budget:850000 },
+    project:{ name:"900 Guava", address:"900 Guava St, Fort Lauderdale, FL 33315", start, budget:850000 },
     phases, trades, tasks
   };
 }
@@ -1563,7 +1571,7 @@ function renderAll(){
 ============================================================ */
 function seedCostRef(){
   const I=(trade,item,unit,low,avg,high,notes)=>({id:uid(),trade,item,unit,low,avg,high,notes:notes||"",bids:[]});
-  return [
+  const ref=[
     I("Sitework","Lot clearing & grubbing","lump (typical lot)",5000,9000,16000),
     I("Sitework","Structural fill & compaction","per cu yd",25,38,55),
     I("Concrete","Slab on grade (monolithic)","per sq ft",7,9.5,13),
@@ -1594,6 +1602,28 @@ function seedCostRef(){
     I("Cabinets/Counters","Quartz countertops","per sq ft",60,90,140),
     I("Exterior","Paver driveway","per sq ft",12,18,28),
   ];
+  // a few real bids already logged (from the 900 Guava buyout)
+  const B=(name,...bids)=>{ const it=ref.find(x=>x.item===name); if(it) it.bids=bids.map(b=>({id:uid(),...b})); };
+  B("Impact windows (Miami-Dade NOA)",
+    {sub:"Impact Glass FL", price:74, date:addDays(todayISO(),-78), note:"Awarded — 900 Guava"},
+    {sub:"Storm Solutions FL", price:98, date:addDays(todayISO(),-80), note:"Above range; long lead time"},
+    {sub:"ClearView Impact", price:52, date:addDays(todayISO(),-79), note:"Below range, smaller crew"});
+  B("Concrete/clay tile roof (HVHZ)",
+    {sub:"Sunrise Roofing", price:18, date:addDays(todayISO(),-92), note:"Awarded"},
+    {sub:"Apex Roofing", price:23, date:addDays(todayISO(),-90), note:""});
+  B("CBS block wall",
+    {sub:"Coastal Masonry", price:15, date:addDays(todayISO(),-100), note:"Awarded"},
+    {sub:"SoFla Block Co", price:19, date:addDays(todayISO(),-99), note:""});
+  B("Slab on grade (monolithic)",
+    {sub:"Atlantic Concrete", price:9, date:addDays(todayISO(),-104), note:"Awarded"},
+    {sub:"Premier Concrete", price:12, date:addDays(todayISO(),-103), note:""});
+  B("Kitchen cabinets",
+    {sub:"Riverwalk Cabinetry", price:520, date:addDays(todayISO(),-30), note:"Awarded — semi-custom"},
+    {sub:"Euro Kitchens", price:760, date:addDays(todayISO(),-29), note:"Frameless, higher end"});
+  B("Quartz countertops",
+    {sub:"Stone Gallery", price:88, date:addDays(todayISO(),-28), note:""},
+    {sub:"Marble & More", price:135, date:addDays(todayISO(),-27), note:"Premium slab"});
+  return ref;
 }
 function fmtCost(n){ n=+n; if(!isFinite(n)) return "—";
   return "$"+(n>=100? n.toLocaleString(undefined,{maximumFractionDigits:0})
