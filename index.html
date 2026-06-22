@@ -189,7 +189,7 @@
   <div class="brand"><span class="logo">🏗️</span> BuildTrack</div>
   <div class="proj-switch">
     <select id="projSwitcher" class="proj-select" title="Switch project"></select>
-    <span id="projAddr" class="muted">—</span>
+    <span class="muted" style="display:flex;align-items:center;gap:6px"><span id="projAddr">—</span><span id="soldTag"></span></span>
   </div>
   <button id="btnNewProject" title="Create a new project">＋ Project</button>
   <div class="spacer"></div>
@@ -214,6 +214,7 @@
   <section class="view active" id="view-dashboard">
     <h2 class="section">Project Dashboard</h2>
     <p class="sub">A live snapshot of your build.</p>
+    <div id="soldBanner"></div>
     <div class="grid cards-4" id="dashStats"></div>
 
     <div class="grid cards-3" style="margin-top:18px">
@@ -284,6 +285,7 @@
     <h2 class="section">Budget</h2>
     <p class="sub">Estimated vs. actual cost, by phase and task.</p>
     <div class="grid cards-4" id="budgetStats" style="margin-bottom:18px"></div>
+    <div id="saleSummary"></div>
     <div class="card" style="padding:0;overflow:hidden">
       <table id="budgetTable"></table>
     </div>
@@ -461,6 +463,22 @@
           <input type="number" id="s_budget" min="0" step="1000" placeholder="0" />
         </div>
       </div>
+      <hr style="border:none;border-top:1px solid var(--line);margin:18px 0" />
+      <label style="display:flex;gap:8px;align-items:center;font-weight:600;margin-bottom:12px"><input type="checkbox" id="s_sold" style="width:auto" /> Mark this project as SOLD</label>
+      <div class="field-row">
+        <div class="field"><label>Sale price ($)</label><input type="number" id="s_saleprice" min="0" step="1000" /></div>
+        <div class="field"><label>Closing date</label><input type="date" id="s_saledate" /></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Land / lot cost ($)</label><input type="number" id="s_landcost" min="0" step="1000" /></div>
+        <div class="field"><label>Agent commission (%)</label><input type="number" id="s_commission" min="0" step="0.5" /></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Buyer</label><input id="s_buyer" /></div>
+        <div class="field"><label>Listing agent / broker</label><input id="s_agent" /></div>
+      </div>
+      <div class="field"><label>Sale notes</label><textarea id="s_salenotes"></textarea></div>
+      <hr style="border:none;border-top:1px solid var(--line);margin:18px 0" />
       <button class="btn ghost" id="s_addWaterfront" style="margin-top:4px">+ Add “280 Waterfront” sample (completed build)</button>
       <hr style="border:none;border-top:1px solid var(--line);margin:18px 0" />
       <button class="btn danger" id="s_deleteProject" style="margin-bottom:10px">Delete this project</button>
@@ -773,7 +791,12 @@ function sampleWaterfront(){
 
   return {
     id: uid(),
-    project:{ name:"280 Waterfront", address:"280 Waterfront Dr, Fort Lauderdale, FL", start, budget:1150000 },
+    project:{
+      name:"280 Waterfront", address:"280 Waterfront Dr, Fort Lauderdale, FL", start, budget:1150000,
+      sale:{ sold:true, price:2750000, date:addDays(todayISO(),-20), landCost:700000,
+        commissionPct:5, buyer:"Private buyer (cash)", agent:"Coastal Luxury Realty",
+        notes:"Listed at completion, sold above ask after ~2 weeks. Closed and funded." }
+    },
     phases, trades, tasks
   };
 }
@@ -862,8 +885,48 @@ const statusPill = s => `<span class="pill ${STATUS[s].cls}">${STATUS[s].label}<
 /* ============================================================
    DASHBOARD
 ============================================================ */
+function saleSummary(p){
+  const s=p.project.sale;
+  if(!s || !s.sold) return null;
+  const construction=p.tasks.reduce((a,t)=>a+(+t.actual||0),0);
+  const land=+s.landCost||0;
+  const price=+s.price||0;
+  const commissionPct=+s.commissionPct||0;
+  const commission=price*commissionPct/100;
+  const invested=land+construction;
+  const totalCost=invested+commission;
+  const profit=price-totalCost;
+  const roi=invested? profit/invested*100 : 0;
+  return {price,land,construction,commission,commissionPct,invested,totalCost,profit,roi,
+          date:s.date,buyer:s.buyer,agent:s.agent,notes:s.notes};
+}
+
 function renderDashboard(){
   const tasks=state.tasks;
+
+  const ss=saleSummary(state);
+  $("#soldBanner").innerHTML = ss ? `
+    <div class="card" style="border-color:rgba(55,200,113,.45);background:linear-gradient(135deg,rgba(55,200,113,.13),rgba(79,140,255,.08));margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <span class="pill status-done" style="font-size:14px;padding:6px 14px">✓ SOLD</span>
+        <div style="font-size:24px;font-weight:800">${money(ss.price)}</div>
+        <span class="muted">closed ${fmtD(ss.date)}${ss.buyer?' · '+esc(ss.buyer):''}</span>
+        <div style="flex:1;min-width:20px"></div>
+        <div style="text-align:right">
+          <div class="muted" style="font-size:11px;letter-spacing:.04em">NET PROFIT</div>
+          <div style="font-size:24px;font-weight:800;color:${ss.profit>=0?'#37c871':'#f0584c'}">${money(ss.profit)}</div>
+          <div class="muted" style="font-size:12px">${ss.roi.toFixed(0)}% ROI</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:14px;font-size:13px" class="muted">
+        <span>Land <b style="color:var(--text)">${money(ss.land)}</b></span>
+        <span>Construction <b style="color:var(--text)">${money(ss.construction)}</b></span>
+        <span>Selling costs <b style="color:var(--text)">${money(ss.commission)}</b> <span style="font-size:11px">(${ss.commissionPct}%)</span></span>
+        <span>All-in cost <b style="color:var(--text)">${money(ss.totalCost)}</b></span>
+      </div>
+      ${ss.notes?`<div class="muted" style="font-size:12px;margin-top:10px">${esc(ss.notes)}</div>`:""}
+    </div>` : "";
+
   const overall = tasks.length ? Math.round(tasks.reduce((a,t)=>a+(t.progress||0),0)/tasks.length) : 0;
   const done = tasks.filter(t=>t.status==="done").length;
   const active = tasks.filter(t=>t.status==="inprogress").length;
@@ -1140,6 +1203,18 @@ function renderBudget(){
     ${stat("Remaining", money(remaining), `<span class="muted" style="font-size:12px">${remaining<0?'over budget':'available'}</span>`)}
   `;
 
+  const ss=saleSummary(state);
+  $("#saleSummary").innerHTML = ss ? `<div class="card" style="margin-bottom:18px;border-color:rgba(55,200,113,.35)">
+    <h3 style="margin:0 0 4px">Sale &amp; profit</h3>
+    <table>
+      <tr><td>Sale price</td><td class="num"><b>${money(ss.price)}</b></td></tr>
+      <tr><td class="muted">Land / lot cost</td><td class="num">− ${money(ss.land)}</td></tr>
+      <tr><td class="muted">Construction (actual)</td><td class="num">− ${money(ss.construction)}</td></tr>
+      <tr><td class="muted">Selling costs (${ss.commissionPct}%)</td><td class="num">− ${money(ss.commission)}</td></tr>
+      <tr style="border-top:2px solid var(--line)"><td><b>Net profit</b></td><td class="num"><b style="color:${ss.profit>=0?'#37c871':'#f0584c'}">${money(ss.profit)}</b></td></tr>
+      <tr><td class="muted">Return on investment</td><td class="num muted">${ss.roi.toFixed(1)}%</td></tr>
+    </table></div>` : "";
+
   let rows="";
   state.phases.forEach(p=>{
     const items=tasks.filter(t=>t.phaseId===p.id);
@@ -1306,6 +1381,15 @@ function openSettings(){
   $("#s_addr").value=state.project.address;
   $("#s_start").value=state.project.start;
   $("#s_budget").value=state.project.budget||"";
+  const s=state.project.sale||{};
+  $("#s_sold").checked=!!s.sold;
+  $("#s_saleprice").value=s.price||"";
+  $("#s_saledate").value=s.date||"";
+  $("#s_landcost").value=s.landCost||"";
+  $("#s_commission").value=(s.commissionPct!=null?s.commissionPct:"");
+  $("#s_buyer").value=s.buyer||"";
+  $("#s_agent").value=s.agent||"";
+  $("#s_salenotes").value=s.notes||"";
   openModal("#settingsModal");
 }
 $("#btnSettings").addEventListener("click",openSettings);
@@ -1314,6 +1398,16 @@ $("#s_save").addEventListener("click",()=>{
   state.project.address=$("#s_addr").value.trim();
   state.project.start=$("#s_start").value;
   state.project.budget=+$("#s_budget").value||0;
+  state.project.sale={
+    sold:$("#s_sold").checked,
+    price:+$("#s_saleprice").value||0,
+    date:$("#s_saledate").value,
+    landCost:+$("#s_landcost").value||0,
+    commissionPct:+$("#s_commission").value||0,
+    buyer:$("#s_buyer").value.trim(),
+    agent:$("#s_agent").value.trim(),
+    notes:$("#s_salenotes").value.trim()
+  };
   save(); closeModal(); renderAll(); toast("Project updated");
 });
 $("#s_reset").addEventListener("click",()=>{
@@ -1378,6 +1472,8 @@ function randomColor(){ const h=Math.floor(Math.random()*360); return `hsl(${h} 
 function renderAll(){
   renderProjectSwitcher();
   $("#projAddr").textContent=state.project.address||"";
+  $("#soldTag").innerHTML = (state.project.sale && state.project.sale.sold)
+    ? `<span class="pill status-done" style="font-size:10px;padding:2px 7px">SOLD</span>` : "";
   renderDashboard();
   renderGantt();
   renderTasks();
