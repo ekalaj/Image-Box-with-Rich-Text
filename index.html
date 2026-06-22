@@ -41,6 +41,10 @@
     padding:8px 12px;border-radius:8px
   }
   .topbar button:hover{border-color:var(--accent)}
+  .proj-switch{display:flex;flex-direction:column;gap:2px}
+  .proj-select{background:var(--panel2);border:1px solid var(--line);color:var(--text);font-weight:700;font-size:14px;padding:6px 10px;border-radius:8px;max-width:230px}
+  .proj-switch #projAddr{font-size:11px}
+  #cloudDot{font-size:13px}
 
   nav.tabs{
     display:flex;gap:4px;padding:8px 16px 0;background:var(--panel);
@@ -183,12 +187,14 @@
 
 <header class="topbar">
   <div class="brand"><span class="logo">🏗️</span> BuildTrack</div>
-  <div class="proj-meta">
-    <b id="projName">—</b>
-    <span id="projAddr">—</span>
+  <div class="proj-switch">
+    <select id="projSwitcher" class="proj-select" title="Switch project"></select>
+    <span id="projAddr" class="muted">—</span>
   </div>
+  <button id="btnNewProject" title="Create a new project">＋ Project</button>
   <div class="spacer"></div>
-  <button id="btnSettings" title="Project settings">⚙ Project</button>
+  <button id="btnCloud" title="Cloud sync — share across devices">☁ <span id="cloudDot">Sync</span></button>
+  <button id="btnSettings" title="Project settings">⚙ Settings</button>
   <button id="btnExport" title="Download a backup of all your data">⬇ Backup</button>
   <button id="btnImport" title="Restore from a backup file">⬆ Restore</button>
   <input type="file" id="importFile" accept="application/json" hidden />
@@ -443,13 +449,44 @@
         </div>
       </div>
       <hr style="border:none;border-top:1px solid var(--line);margin:18px 0" />
-      <button class="btn danger" id="s_reset">Reset everything &amp; reload sample data</button>
+      <button class="btn danger" id="s_deleteProject" style="margin-bottom:10px">Delete this project</button>
+      <button class="btn danger" id="s_reset">Erase ALL projects &amp; reload sample</button>
     </div>
     <footer>
       <span></span>
       <div class="row-actions">
         <button class="btn ghost" data-close>Cancel</button>
         <button class="btn" id="s_save">Save</button>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<!-- CLOUD MODAL -->
+<div class="modal-bg" id="cloudModal">
+  <div class="modal">
+    <header><h3>☁ Cloud Sync</h3><button class="x" data-close>×</button></header>
+    <div class="body">
+      <p class="muted" style="margin-top:0">Sign in to share live data across your phone and laptop. Status: <b id="cloudStatus">—</b></p>
+      <div id="c_form">
+        <div class="field"><label>Supabase Project URL</label><input id="c_url" placeholder="https://xxxxxxxx.supabase.co" /></div>
+        <div class="field"><label>Supabase anon public key</label><input id="c_key" placeholder="eyJhbGci…" /></div>
+        <div class="field-row">
+          <div class="field"><label>Email</label><input id="c_email" placeholder="you@caligroup.org" /></div>
+          <div class="field"><label>Password</label><input type="password" id="c_pw" placeholder="••••••••" /></div>
+        </div>
+        <label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted)"><input type="checkbox" id="c_signup" style="width:auto" /> Create this account (first time only)</label>
+        <p class="muted" style="font-size:12px;margin-bottom:0">One shared login = one shared dataset — both devices sign in with the same email &amp; password. See <b>SETUP.md</b> for the 5-minute Supabase setup.</p>
+      </div>
+      <div id="c_signedin" style="display:none">
+        <div class="warn" style="background:rgba(55,200,113,.12);border-color:rgba(55,200,113,.3);color:#7ee6a6">✓ Connected and syncing. Changes save to the cloud automatically and pull from your other devices every 20 seconds.</div>
+      </div>
+    </div>
+    <footer>
+      <button class="btn danger" id="c_signout" style="display:none">Sign out</button>
+      <div class="row-actions">
+        <button class="btn ghost" data-close>Close</button>
+        <button class="btn" id="c_connect">Connect &amp; sync</button>
       </div>
     </footer>
   </div>
@@ -464,7 +501,7 @@
    All data lives in localStorage. No server, fully offline.
 ============================================================ */
 
-const STORE_KEY = "buildtrack.v1";
+const STORE_KEY = "buildtrack.v2";
 const DAY = 86400000;
 const uid = () => Math.random().toString(36).slice(2,9);
 const $ = s => document.querySelector(s);
@@ -486,7 +523,7 @@ const money = n => "$"+(Number(n)||0).toLocaleString(undefined,{maximumFractionD
 /* ============================================================
    Seed data — realistic Ft. Lauderdale, FL custom home build
 ============================================================ */
-function seed(){
+function seedProject(){
   const start = todayISO();
   // build relative dates from "start"
   const D = n => addDays(start, n);
@@ -578,7 +615,8 @@ function seed(){
   ];
 
   return {
-    project:{ name:"Las Olas Residence", address:"Fort Lauderdale, FL", start, budget:850000 },
+    id: uid(),
+    project:{ name:"900 Guava", address:"900 Guava, Fort Lauderdale, FL", start, budget:850000 },
     phases, trades, tasks
   };
 }
@@ -586,22 +624,46 @@ function seed(){
 /* ============================================================
    Store
 ============================================================ */
-let state = load();
+/* db = multi-project container persisted locally (+ optional cloud).
+   state = a live pointer to the ACTIVE project, so all view code below
+   keeps using state.phases / state.tasks / state.trades unchanged. */
+let db = load();
+let state;
+syncPointer();
+
+function emptyDb(){
+  const p = seedProject();
+  return { version:2, projects:[p], activeId:p.id, updatedAt:Date.now(), cloud:null };
+}
 function load(){
   try{
     const raw = localStorage.getItem(STORE_KEY);
-    if(raw) return JSON.parse(raw);
+    if(raw){ const d=JSON.parse(raw); if(d && Array.isArray(d.projects) && d.projects.length) return d; }
+    // migrate an older single-project save, if present
+    const v1 = localStorage.getItem("buildtrack.v1");
+    if(v1){
+      const old=JSON.parse(v1);
+      const d={ version:2, projects:[{id:uid(),...old}], activeId:null, updatedAt:Date.now(), cloud:null };
+      d.activeId=d.projects[0].id;
+      localStorage.setItem(STORE_KEY, JSON.stringify(d));
+      return d;
+    }
   }catch(e){ console.warn("load failed", e); }
-  const s = seed();
-  localStorage.setItem(STORE_KEY, JSON.stringify(s));
-  return s;
+  const d=emptyDb();
+  localStorage.setItem(STORE_KEY, JSON.stringify(d));
+  return d;
 }
+function activeProject(){ return db.projects.find(p=>p.id===db.activeId) || db.projects[0]; }
+function syncPointer(){ state = activeProject(); }
+
 let saveTimer=null;
 function save(){
+  db.updatedAt=Date.now();
   clearTimeout(saveTimer);
   saveTimer = setTimeout(()=>{
-    try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
-    catch(e){ toast("⚠ Storage full — remove some photos"); }
+    try{ localStorage.setItem(STORE_KEY, JSON.stringify(db)); }
+    catch(e){ toast("⚠ Storage full — remove some photos or back up & reset"); }
+    if(typeof Cloud!=="undefined") Cloud.queuePush();
   }, 150);
 }
 const phaseById = id => state.phases.find(p=>p.id===id);
@@ -1096,18 +1158,18 @@ $("#s_save").addEventListener("click",()=>{
   save(); closeModal(); renderAll(); toast("Project updated");
 });
 $("#s_reset").addEventListener("click",()=>{
-  if(!confirm("This erases ALL your data and reloads the Ft. Lauderdale sample. Continue?")) return;
-  state=seed(); save(); closeModal(); renderAll(); toast("Reset to sample data");
+  if(!confirm("This erases ALL projects and reloads the 900 Guava sample. Continue?")) return;
+  const keepCloud=db.cloud; db=emptyDb(); db.cloud=keepCloud; syncPointer(); save(); closeModal(); renderAll(); toast("Reset to sample data");
 });
 
 /* ============================================================
    Backup / restore
 ============================================================ */
 $("#btnExport").addEventListener("click",()=>{
-  const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
+  const blob=new Blob([JSON.stringify(db,null,2)],{type:"application/json"});
   const a=document.createElement("a");
   a.href=URL.createObjectURL(blob);
-  a.download=`buildtrack-${(state.project.name||'project').replace(/\W+/g,'-').toLowerCase()}-${todayISO()}.json`;
+  a.download=`buildtrack-all-projects-${todayISO()}.json`;
   a.click(); URL.revokeObjectURL(a.href);
   toast("Backup downloaded");
 });
@@ -1118,8 +1180,13 @@ $("#importFile").addEventListener("change",e=>{
   reader.onload=ev=>{
     try{
       const data=JSON.parse(ev.target.result);
-      if(!data.project||!Array.isArray(data.tasks)) throw new Error("bad file");
-      state=data; save(); renderAll(); toast("Backup restored");
+      if(Array.isArray(data.projects) && data.projects.length){
+        db={version:2,projects:data.projects,activeId:data.activeId||data.projects[0].id,updatedAt:Date.now(),cloud:db.cloud};
+      } else if(data.project && Array.isArray(data.tasks)){
+        db={version:2,projects:[{id:uid(),...data}],activeId:null,updatedAt:Date.now(),cloud:db.cloud};
+        db.activeId=db.projects[0].id;
+      } else throw new Error("bad file");
+      syncPointer(); save(); renderAll(); toast("Backup restored");
     }catch(err){ toast("⚠ Not a valid BuildTrack backup"); }
   };
   reader.readAsText(f); e.target.value="";
@@ -1150,7 +1217,7 @@ function randomColor(){ const h=Math.floor(Math.random()*360); return `hsl(${h} 
    Render all
 ============================================================ */
 function renderAll(){
-  $("#projName").textContent=state.project.name||"Untitled Project";
+  renderProjectSwitcher();
   $("#projAddr").textContent=state.project.address||"";
   renderDashboard();
   renderGantt();
@@ -1158,7 +1225,193 @@ function renderAll(){
   renderTrades();
   renderBudget();
 }
+
+/* ============================================================
+   Multi-project switching
+============================================================ */
+function renderProjectSwitcher(){
+  $("#projSwitcher").innerHTML=db.projects
+    .map(p=>`<option value="${p.id}" ${p.id===db.activeId?'selected':''}>${esc(p.project.name||'Untitled')}</option>`).join("");
+}
+function setActiveProject(id){
+  if(!db.projects.find(p=>p.id===id)) return;
+  db.activeId=id; syncPointer(); save(); renderAll();
+}
+function newProjectFromTemplate(name){
+  // start from the standard FL phase + trade template, but with no tasks yet
+  const base=seedProject();
+  base.id=uid();
+  base.project={name:name||"New Project", address:"", start:todayISO(), budget:0};
+  base.tasks=[];
+  return base;
+}
+function addProject(){
+  const name=prompt("Name this project (e.g. 1200 Coral, Riverside Spec):","");
+  if(name===null) return;
+  const p=newProjectFromTemplate(name.trim()||"New Project");
+  db.projects.push(p); db.activeId=p.id; syncPointer(); save(); renderAll();
+  toast("Project added — standard phases ready, now add your tasks");
+}
+function deleteActiveProject(){
+  if(db.projects.length<=1){ toast("Add another project before deleting this one"); return; }
+  if(!confirm(`Delete project “${state.project.name}” and all of its tasks? This cannot be undone.`)) return;
+  db.projects=db.projects.filter(p=>p.id!==db.activeId);
+  db.activeId=db.projects[0].id; syncPointer(); save(); closeModal(); renderAll(); toast("Project deleted");
+}
+$("#projSwitcher").addEventListener("change",e=>setActiveProject(e.target.value));
+$("#btnNewProject").addEventListener("click",addProject);
+$("#s_deleteProject").addEventListener("click",deleteActiveProject);
+
+/* ============================================================
+   Cloud sync — Supabase REST + Auth (no external library).
+   Config lives in db.cloud = {url, anonKey}. Session is device-local.
+   Whole-db sync with last-write-wins; polls every 20s + on focus.
+============================================================ */
+const SESSION_KEY="buildtrack.session";
+const Cloud = (function(){
+  let session=null;                 // {access_token, refresh_token, user_id, expires_at}
+  let pushTimer=null, pollTimer=null, status="off";
+
+  function loadSession(){ try{ session=JSON.parse(localStorage.getItem(SESSION_KEY))||null; }catch(e){ session=null; } }
+  function saveSession(){ session? localStorage.setItem(SESSION_KEY,JSON.stringify(session)) : localStorage.removeItem(SESSION_KEY); }
+  function cfg(){ return db.cloud; }
+  function configured(){ return !!(cfg() && cfg().url && cfg().anonKey); }
+  function setStatus(s){ status=s; renderCloudStatus(); }
+  function base(){ return cfg().url.replace(/\/+$/,""); }
+
+  async function api(path, opts={}, auth=true){
+    const headers=Object.assign({apikey:cfg().anonKey,"Content-Type":"application/json"}, opts.headers||{});
+    if(auth && session) headers["Authorization"]="Bearer "+session.access_token;
+    return fetch(base()+path, {...opts, headers});
+  }
+  function persistLocal(){ try{ localStorage.setItem(STORE_KEY,JSON.stringify(db)); }catch(e){} }
+
+  async function refresh(){
+    if(!session) return false;
+    const res=await api("/auth/v1/token?grant_type=refresh_token",{method:"POST",body:JSON.stringify({refresh_token:session.refresh_token})},false);
+    if(!res.ok){ signOut(); return false; }
+    const d=await res.json();
+    session={access_token:d.access_token,refresh_token:d.refresh_token,user_id:d.user.id,expires_at:Date.now()+d.expires_in*1000};
+    saveSession(); return true;
+  }
+  async function ensureToken(){ if(session && Date.now()>session.expires_at-60000) await refresh(); }
+
+  async function signUp(email,password){
+    const res=await api("/auth/v1/signup",{method:"POST",body:JSON.stringify({email,password})},false);
+    if(!res.ok){ const e=await res.json().catch(()=>({})); throw new Error(e.msg||e.error_description||("Sign-up failed ("+res.status+")")); }
+  }
+  async function signIn(email,password){
+    setStatus("connecting");
+    const res=await api("/auth/v1/token?grant_type=password",{method:"POST",body:JSON.stringify({email,password})},false);
+    if(!res.ok){ setStatus("error"); const e=await res.json().catch(()=>({})); throw new Error(e.error_description||e.msg||"Sign-in failed"); }
+    const d=await res.json();
+    session={access_token:d.access_token,refresh_token:d.refresh_token,user_id:d.user.id,expires_at:Date.now()+d.expires_in*1000};
+    saveSession();
+    await initialSync();
+    startPolling();
+    setStatus("online");
+  }
+  function signOut(){ session=null; saveSession(); stopPolling(); setStatus(configured()?"offline":"off"); }
+
+  async function pullRemote(){
+    await ensureToken();
+    const q=`/rest/v1/app_state?user_id=eq.${session.user_id}&select=data,updated_at`;
+    let res=await api(q,{method:"GET"});
+    if(res.status===401 && await refresh()) res=await api(q,{method:"GET"});
+    if(!res.ok) throw new Error("pull failed "+res.status);
+    const rows=await res.json();
+    return rows[0]||null;
+  }
+  async function pushRemote(){
+    if(!configured()||!session) return;
+    await ensureToken();
+    const body=[{user_id:session.user_id,
+      data:{version:db.version,projects:db.projects,activeId:db.activeId,updatedAt:db.updatedAt},
+      updated_at:new Date(db.updatedAt).toISOString()}];
+    const opt={method:"POST",headers:{Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(body)};
+    let res=await api("/rest/v1/app_state",opt);
+    if(res.status===401 && await refresh()) res=await api("/rest/v1/app_state",opt);
+    if(!res.ok) throw new Error("push failed "+res.status);
+  }
+  function adopt(data){
+    db.version=data.version||2; db.projects=data.projects;
+    db.activeId=(data.projects.find(p=>p.id===data.activeId)?data.activeId:(data.projects[0]&&data.projects[0].id));
+    db.updatedAt=data.updatedAt; persistLocal(); syncPointer(); renderAll();
+  }
+  async function initialSync(){
+    const row=await pullRemote();
+    if(row && row.data && Array.isArray(row.data.projects) && (row.data.updatedAt||0)>=db.updatedAt){
+      adopt(row.data); toast("Loaded latest from cloud");
+    } else {
+      await pushRemote(); toast("This device is now the cloud copy");
+    }
+  }
+  async function poll(){
+    if(!configured()||!session) return;
+    try{
+      const row=await pullRemote();
+      if(row && row.data && (row.data.updatedAt||0)>db.updatedAt){ adopt(row.data); toast("Synced — new changes from another device"); }
+      setStatus("online");
+    }catch(e){ setStatus("offline"); }
+  }
+  function startPolling(){ stopPolling(); pollTimer=setInterval(poll,20000); }
+  function stopPolling(){ if(pollTimer) clearInterval(pollTimer); pollTimer=null; }
+
+  function queuePush(){
+    if(!configured()||!session) return;
+    clearTimeout(pushTimer);
+    pushTimer=setTimeout(()=>{ pushRemote().then(()=>setStatus("online")).catch(()=>setStatus("offline")); },800);
+  }
+
+  async function connect(url,anonKey,email,password,doSignup){
+    db.cloud={url:url.trim(),anonKey:anonKey.trim()}; persistLocal();
+    if(doSignup) await signUp(email,password);
+    await signIn(email,password);
+  }
+  function init(){
+    loadSession();
+    if(configured() && session){ startPolling(); poll(); setStatus("online"); }
+    else setStatus(configured()?"offline":"off");
+    window.addEventListener("focus",poll);
+  }
+  return { init, connect, signOut, queuePush, poll,
+           get status(){return status;}, isSignedIn(){return !!session;}, configured };
+})();
+
+function renderCloudStatus(){
+  const map={off:["Sync","#9aa4b2"],offline:["Offline","#f5b13d"],connecting:["Syncing…","#5aa6d6"],online:["Synced ✓","#37c871"],error:["Error","#f0584c"]};
+  const [label,color]=map[Cloud.status]||map.off;
+  const dot=$("#cloudDot"); if(dot){ dot.textContent=label; $("#btnCloud").style.borderColor=color; }
+  const st=$("#cloudStatus"); if(st){ st.textContent=label; st.style.color=color; }
+}
+function openCloud(){
+  const c=db.cloud||{};
+  $("#c_url").value=c.url||""; $("#c_key").value=c.anonKey||"";
+  const inn=Cloud.isSignedIn();
+  $("#c_form").style.display=inn?"none":"";
+  $("#c_signedin").style.display=inn?"":"none";
+  $("#c_connect").style.display=inn?"none":"";
+  $("#c_signout").style.display=inn?"":"none";
+  renderCloudStatus();
+  openModal("#cloudModal");
+}
+$("#btnCloud").addEventListener("click",openCloud);
+$("#c_connect").addEventListener("click",async()=>{
+  const url=$("#c_url").value.trim(), key=$("#c_key").value.trim();
+  const email=$("#c_email").value.trim(), pw=$("#c_pw").value;
+  if(!url||!key){ toast("Paste your Supabase URL and anon key"); return; }
+  if(!email||!pw){ toast("Enter email and password"); return; }
+  const btn=$("#c_connect"); btn.disabled=true; btn.textContent="Connecting…";
+  try{
+    await Cloud.connect(url,key,email,pw,$("#c_signup").checked);
+    toast("Connected to cloud ☁"); closeModal();
+  }catch(e){ toast("⚠ "+e.message); }
+  finally{ btn.disabled=false; btn.textContent="Connect & sync"; }
+});
+$("#c_signout").addEventListener("click",()=>{ Cloud.signOut(); openCloud(); toast("Signed out — data stays on this device"); });
+
 renderAll();
+Cloud.init();
 </script>
 </body>
 </html>

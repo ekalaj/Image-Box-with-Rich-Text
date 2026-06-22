@@ -1,11 +1,25 @@
 # BuildTrack — House Construction Manager
 
-A single-file, fully-offline project tracker for managing a custom home build
-(set up for a Fort Lauderdale, FL project). No install, no server, no accounts.
+A single-file project tracker for managing custom home builds. Tracks **multiple
+projects** (starts with **900 Guava**), runs fully offline on one device, and can
+optionally sync across your phone + laptop via a free cloud account.
 
 ## How to use
 1. Open **`index.html`** in any web browser (double-click it).
-2. That's it. All data is saved automatically in your browser (localStorage).
+2. All data saves automatically in your browser.
+3. To share live data across devices, see **[SETUP.md](SETUP.md)** (Supabase + Netlify +
+   the `build.caligroup.org` subdomain).
+
+## Multiple projects
+- The header **project dropdown** switches between builds.
+- **＋ Project** adds a new one — it starts with the standard Florida phase template and
+  trade directory, ready for you to add tasks.
+- Rename / delete a project from **⚙ Settings**.
+
+## Cloud sync across phone + laptop
+The **☁ Sync** button connects the app to a free Supabase backend behind a login, so both
+devices share live data (auto-saves, pulls every 20s). Full walkthrough in **SETUP.md**.
+Without it, the app still works — data just stays on the one device.
 
 ## Features
 - **Dashboard** — overall % complete, budget snapshot, who's on site this week, what's next.
@@ -23,7 +37,8 @@ A single-file, fully-offline project tracker for managing a custom home build
   move between computers or keep a safe copy).
 
 ## Notes
-- Data lives only in *this* browser on *this* computer. Use **Backup** regularly.
-- Comes preloaded with a realistic FL build (CBS block, hurricane tie-downs, impact
-  windows, HVHZ tile roof, parallel MEP crews). Use **⚙ Project → Reset** to start fresh,
-  or just edit/delete the sample tasks and trades.
+- Without cloud sync, data lives only in *this* browser on *this* device — use **Backup**
+  regularly (drop the JSON in pCloud for an offsite copy).
+- The **900 Guava** sample is a realistic FL build (CBS block, hurricane tie-downs, impact
+  windows, HVHZ tile roof, parallel MEP crews). Edit/delete the sample items, or
+  **⚙ Settings → Erase ALL projects** to start clean.
