@@ -461,6 +461,7 @@
           <input type="number" id="s_budget" min="0" step="1000" placeholder="0" />
         </div>
       </div>
+      <button class="btn ghost" id="s_addWaterfront" style="margin-top:4px">+ Add “280 Waterfront” sample (completed build)</button>
       <hr style="border:none;border-top:1px solid var(--line);margin:18px 0" />
       <button class="btn danger" id="s_deleteProject" style="margin-bottom:10px">Delete this project</button>
       <button class="btn danger" id="s_reset">Erase ALL projects &amp; reload sample</button>
@@ -671,6 +672,112 @@ function seedProject(){
   };
 }
 
+/* A fully-completed waterfront build — all tasks done, contracts signed & paid,
+   schedule entirely in the past. Demonstrates the finished end-state. */
+function sampleWaterfront(){
+  const start = addDays(todayISO(), -250);
+  const D = n => addDays(start, n);
+
+  const phases = [
+    {id:"wf_permit", name:"Permitting & Site Prep",  color:"#8a94a6"},
+    {id:"wf_marine", name:"Seawall & Dock",          color:"#3f8fb0"},
+    {id:"wf_found",  name:"Foundation & Slab",        color:"#b07a4a"},
+    {id:"wf_shell",  name:"Structure & Shell (CBS)",  color:"#c0883f"},
+    {id:"wf_roof",   name:"Roofing & Dry-in",         color:"#d65f5f"},
+    {id:"wf_window", name:"Impact Windows & Doors",    color:"#5aa6d6"},
+    {id:"wf_rough",  name:"MEP Rough-ins",             color:"#7c6bd6"},
+    {id:"wf_pool",   name:"Pool & Spa",               color:"#2fa7c4"},
+    {id:"wf_close",  name:"Insulation & Drywall",      color:"#5fb98a"},
+    {id:"wf_finish", name:"Interior Finishes",         color:"#4f8cff"},
+    {id:"wf_ext",    name:"Exterior & Site",           color:"#6fae5a"},
+    {id:"wf_final",  name:"Trim-out & Final",          color:"#37c871"},
+  ];
+
+  const C = "Contract signed & paid in full.";
+  const trades = [
+    {id:"wf_gc",     type:"General Contractor", company:"You / GC",              contact:"Project Owner", phone:"",               email:"", license:"",      rate:0,      color:"#e7ebf0", notes:"Self-managed build."},
+    {id:"wf_marco",  type:"Marine / Seawall",   company:"Atlantic Marine Const.",contact:"Bill",  phone:"(954) 555-0301", email:"", license:"",      rate:185000, color:"#3f8fb0", notes:"Seawall cap + composite dock & davits. "+C},
+    {id:"wf_site",   type:"Site/Excavation",    company:"Broward Site Works",    contact:"Luis",  phone:"(954) 555-0110", email:"", license:"",      rate:9000,   color:"#8a94a6", notes:C},
+    {id:"wf_conc",   type:"Concrete",           company:"Atlantic Concrete",     contact:"Marco", phone:"(954) 555-0120", email:"", license:"",      rate:95000,  color:"#b07a4a", notes:C},
+    {id:"wf_mason",  type:"Masonry / Block",    company:"Coastal Masonry",       contact:"Hector",phone:"(954) 555-0130", email:"", license:"",      rate:46000,  color:"#c0883f", notes:C},
+    {id:"wf_frame",  type:"Framing/Trusses",    company:"Gulfstream Framing",    contact:"Dale",  phone:"(954) 555-0140", email:"", license:"",      rate:31000,  color:"#caa15a", notes:C},
+    {id:"wf_roofco", type:"Roofing",            company:"Sunrise Roofing",       contact:"Tom",   phone:"(954) 555-0150", email:"", license:"CCC-001",rate:66000,  color:"#d65f5f", notes:"HVHZ tile roof. "+C},
+    {id:"wf_win",    type:"Windows & Doors",    company:"Impact Glass FL",       contact:"Rosa",  phone:"(954) 555-0160", email:"", license:"",      rate:74000,  color:"#5aa6d6", notes:"Miami-Dade NOA units. "+C},
+    {id:"wf_plumb",  type:"Plumber",            company:"Tidewater Plumbing",    contact:"Greg",  phone:"(954) 555-0170", email:"", license:"CFC-001",rate:44200,  color:"#7c6bd6", notes:C},
+    {id:"wf_elec",   type:"Electrician",        company:"Sunshine Electric",     contact:"Priya", phone:"(954) 555-0180", email:"", license:"EC-001", rate:55000,  color:"#f5b13d", notes:C},
+    {id:"wf_hvac",   type:"HVAC",               company:"CoolBreeze A/C",        contact:"Sam",   phone:"(954) 555-0190", email:"", license:"CAC-001",rate:45000,  color:"#4fb6c8", notes:C},
+    {id:"wf_lv",     type:"Low Voltage",        company:"SmartHome Wiring",      contact:"Kevin", phone:"(954) 555-0200", email:"", license:"",      rate:15500,  color:"#9b6bff", notes:C},
+    {id:"wf_poolco", type:"Pool Builder",       company:"Blue Lagoon Pools",     contact:"Diego", phone:"(954) 555-0260", email:"", license:"CPC-001",rate:132000, color:"#2fa7c4", notes:"Pool, spa & deck. "+C},
+    {id:"wf_dry",    type:"Drywall",            company:"Pro Drywall",           contact:"Andre", phone:"(954) 555-0210", email:"", license:"",      rate:43000,  color:"#5fb98a", notes:C},
+    {id:"wf_paint",  type:"Painter",            company:"Coastal Coatings",      contact:"Maria", phone:"(954) 555-0220", email:"", license:"",      rate:33500,  color:"#6fae5a", notes:C},
+    {id:"wf_tile",   type:"Tile/Flooring",      company:"Las Olas Flooring",     contact:"Nina",  phone:"(954) 555-0230", email:"", license:"",      rate:48000,  color:"#4f8cff", notes:C},
+    {id:"wf_cab",    type:"Cabinets/Counters",  company:"Riverwalk Cabinetry",   contact:"Paul",  phone:"(954) 555-0240", email:"", license:"",      rate:60000,  color:"#c08a4f", notes:C},
+    {id:"wf_stucco", type:"Stucco",             company:"Florida Stucco Co",     contact:"Jorge", phone:"(954) 555-0250", email:"", license:"",      rate:37000,  color:"#caa15a", notes:C},
+    {id:"wf_land",   type:"Landscape",          company:"Greenscape FL",         contact:"Omar",  phone:"(954) 555-0270", email:"", license:"",      rate:23000,  color:"#6fae5a", notes:"Landscape + irrigation. "+C},
+  ];
+
+  // every task is done (100%), with est + actual (contract) and a signed-contract note
+  const T = (name,ph,tr,s,len,est,actual)=>({
+    id:uid(), name, phaseId:ph, tradeId:tr, start:D(s), end:D(s+len),
+    progress:100, status:"done", dependsOn:[], est, actual,
+    notes:`✅ Contract ${money(actual)} — signed & paid in full.`, photos:[]
+  });
+
+  const tasks = [
+    T("Permit & approvals","wf_permit","wf_gc",0,20,4000,4200),
+    T("Survey & site clearing","wf_permit","wf_site",10,6,9000,9000),
+
+    T("Seawall cap & rip-rap","wf_marine","wf_marco",16,20,120000,128000),
+    T("Composite dock & boat davits","wf_marine","wf_marco",30,18,62000,57000),
+
+    T("Form & pour slab","wf_found","wf_conc",26,8,52000,52000),
+    T("Slab cure & inspection","wf_found","wf_gc",34,5,0,0),
+
+    T("CBS block walls — 1st floor","wf_shell","wf_mason",40,14,44000,46000),
+    T("Tie beam & columns pour","wf_shell","wf_conc",54,5,16000,16000),
+
+    T("Set roof trusses","wf_roof","wf_frame",60,6,30000,31000),
+    T("Hurricane straps & tie-downs","wf_roof","wf_frame",66,3,0,0),
+    T("Roof sheathing & dry-in","wf_roof","wf_roofco",69,5,0,0),
+    T("Tile roof install (HVHZ)","wf_roof","wf_roofco",74,12,64000,66000),
+
+    T("Install impact windows & doors","wf_window","wf_win",72,10,72000,74000),
+
+    T("Plumbing rough-in","wf_rough","wf_plumb",82,9,34000,35000),
+    T("Electrical rough-in","wf_rough","wf_elec",82,10,44000,44000),
+    T("HVAC ductwork & rough-in","wf_rough","wf_hvac",84,8,40000,41000),
+    T("Low-voltage / smart home rough","wf_rough","wf_lv",86,6,16000,15500),
+
+    T("Pool & spa shell + plumbing","wf_pool","wf_poolco",90,20,85000,88000),
+    T("Pool deck & finish","wf_pool","wf_poolco",150,14,45000,44000),
+
+    T("Rough MEP inspections","wf_close","wf_gc",95,4,0,0),
+    T("Insulation","wf_close","wf_dry",100,4,12000,12000),
+    T("Drywall hang & finish","wf_close","wf_dry",104,12,30000,31000),
+
+    T("Interior paint","wf_finish","wf_paint",118,8,17000,17500),
+    T("Tile & flooring","wf_finish","wf_tile",120,16,46000,48000),
+    T("Cabinets & countertops","wf_finish","wf_cab",128,12,58000,60000),
+
+    T("Exterior stucco — 3 coat","wf_ext","wf_stucco",96,16,36000,37000),
+    T("Exterior paint","wf_ext","wf_paint",116,6,13000,13000),
+    T("Paver driveway & hardscape","wf_ext","wf_conc",150,8,26000,27000),
+    T("Landscape & irrigation","wf_ext","wf_land",160,10,22000,23000),
+
+    T("Plumbing trim & fixtures","wf_final","wf_plumb",140,5,9000,9200),
+    T("Electrical trim & fixtures","wf_final","wf_elec",140,6,11000,11000),
+    T("HVAC start-up & balance","wf_final","wf_hvac",142,3,4000,4000),
+    T("Final paint touch-up","wf_final","wf_paint",146,4,3000,3000),
+    T("Final inspection & C.O.","wf_final","wf_gc",170,5,0,0),
+  ];
+
+  return {
+    id: uid(),
+    project:{ name:"280 Waterfront", address:"280 Waterfront Dr, Fort Lauderdale, FL", start, budget:1150000 },
+    phases, trades, tasks
+  };
+}
+
 /* ============================================================
    Store
 ============================================================ */
@@ -684,7 +791,8 @@ syncPointer();
 
 function emptyDb(){
   const p = seedProject();
-  return { version:2, projects:[p], activeId:p.id, costRef:seedCostRef(), updatedAt:Date.now(), cloud:null };
+  const w = sampleWaterfront();
+  return { version:2, projects:[p,w], activeId:p.id, costRef:seedCostRef(), updatedAt:Date.now(), cloud:null };
 }
 function load(){
   try{
@@ -1443,6 +1551,11 @@ function deleteActiveProject(){
 $("#projSwitcher").addEventListener("change",e=>setActiveProject(e.target.value));
 $("#btnNewProject").addEventListener("click",addProject);
 $("#s_deleteProject").addEventListener("click",deleteActiveProject);
+$("#s_addWaterfront").addEventListener("click",()=>{
+  if(db.projects.some(p=>p.project.name==="280 Waterfront")){ toast("“280 Waterfront” is already in your list"); return; }
+  const w=sampleWaterfront(); db.projects.push(w); db.activeId=w.id; syncPointer(); save(); closeModal(); renderAll();
+  toast("Added 280 Waterfront — a completed sample build");
+});
 
 /* ============================================================
    Cloud sync — Supabase REST + Auth (no external library).
