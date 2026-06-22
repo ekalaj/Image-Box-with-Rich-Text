@@ -1,0 +1,1164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BuildTrack — House Construction Manager</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a;
+    --text:#e7ebf0; --muted:#9aa4b2; --accent:#4f8cff; --accent2:#2d6cff;
+    --green:#37c871; --amber:#f5b13d; --red:#f0584c;
+    --shadow:0 6px 24px rgba(0,0,0,.35);
+    --radius:12px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--bg); color:var(--text);
+    font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+  }
+  button{font:inherit;cursor:pointer}
+  input,select,textarea{font:inherit}
+  a{color:var(--accent)}
+
+  /* Layout */
+  header.topbar{
+    display:flex;align-items:center;gap:16px;
+    padding:12px 20px;background:var(--panel);border-bottom:1px solid var(--line);
+    position:sticky;top:0;z-index:30;
+  }
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:16px;white-space:nowrap}
+  .brand .logo{
+    width:30px;height:30px;border-radius:8px;display:grid;place-items:center;
+    background:linear-gradient(135deg,var(--accent),#9b6bff);font-size:16px
+  }
+  .proj-meta{color:var(--muted);font-size:12px;display:flex;flex-direction:column;line-height:1.3}
+  .proj-meta b{color:var(--text);font-size:13px}
+  .topbar .spacer{flex:1}
+  .topbar button{
+    background:var(--panel2);border:1px solid var(--line);color:var(--text);
+    padding:8px 12px;border-radius:8px
+  }
+  .topbar button:hover{border-color:var(--accent)}
+
+  nav.tabs{
+    display:flex;gap:4px;padding:8px 16px 0;background:var(--panel);
+    border-bottom:1px solid var(--line);position:sticky;top:55px;z-index:20;overflow-x:auto
+  }
+  nav.tabs button{
+    background:transparent;border:none;color:var(--muted);padding:10px 16px;
+    border-bottom:2px solid transparent;border-radius:6px 6px 0 0;white-space:nowrap
+  }
+  nav.tabs button:hover{color:var(--text)}
+  nav.tabs button.active{color:var(--text);border-bottom-color:var(--accent)}
+
+  main{padding:20px;max-width:1400px;margin:0 auto}
+  .view{display:none}
+  .view.active{display:block}
+
+  h2.section{margin:0 0 4px;font-size:20px}
+  .sub{color:var(--muted);margin:0 0 18px}
+
+  /* Cards & grid */
+  .grid{display:grid;gap:16px}
+  .cards-4{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+  .cards-3{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px;box-shadow:var(--shadow)
+  }
+  .stat .label{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  .stat .value{font-size:28px;font-weight:700;margin-top:6px}
+  .stat .value small{font-size:14px;color:var(--muted);font-weight:500}
+
+  .bar{height:8px;background:var(--panel2);border-radius:99px;overflow:hidden;margin-top:10px}
+  .bar > i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--green))}
+
+  /* Buttons */
+  .btn{background:var(--accent2);border:1px solid var(--accent2);color:#fff;padding:8px 14px;border-radius:8px}
+  .btn:hover{background:var(--accent)}
+  .btn.ghost{background:transparent;border-color:var(--line);color:var(--text)}
+  .btn.ghost:hover{border-color:var(--accent)}
+  .btn.sm{padding:5px 10px;font-size:12px;border-radius:6px}
+  .btn.danger{background:transparent;border-color:#5a2b2b;color:#ff9b91}
+  .btn.danger:hover{background:#3a1f1f}
+
+  .row-actions{display:flex;gap:8px;align-items:center}
+
+  /* Tables */
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+  th{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.03em;font-weight:600}
+  tr:hover td{background:rgba(255,255,255,.02)}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap}
+  .dot{width:9px;height:9px;border-radius:99px;display:inline-block;flex:none}
+
+  .status-notstarted{background:#2a2f3a;color:#b6bfce}
+  .status-inprogress{background:rgba(79,140,255,.18);color:#9cc0ff}
+  .status-blocked{background:rgba(240,88,76,.16);color:#ff9b91}
+  .status-done{background:rgba(55,200,113,.16);color:#7ee6a6}
+
+  /* Gantt */
+  .gantt-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+  .gantt-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel)}
+  .gantt{position:relative;min-width:760px}
+  .g-head{display:flex;position:sticky;top:0;z-index:5;background:var(--panel2);border-bottom:1px solid var(--line)}
+  .g-namecol{width:230px;flex:none;padding:10px 12px;font-weight:600;color:var(--muted);font-size:12px;border-right:1px solid var(--line);position:sticky;left:0;background:var(--panel2);z-index:6}
+  .g-timeline{position:relative;flex:1}
+  .g-months{display:flex}
+  .g-month{flex:none;border-right:1px solid var(--line);padding:6px 8px;font-size:12px;color:var(--muted);font-weight:600;text-align:center}
+  .g-phase-label{padding:8px 12px;background:var(--panel2);font-weight:700;font-size:12px;letter-spacing:.03em;border-top:1px solid var(--line);border-bottom:1px solid var(--line);position:sticky;left:0}
+  .g-row{display:flex;border-bottom:1px solid var(--line);min-height:40px}
+  .g-row:hover{background:rgba(255,255,255,.02)}
+  .g-name{width:230px;flex:none;padding:8px 12px;border-right:1px solid var(--line);position:sticky;left:0;background:var(--panel);z-index:2;display:flex;flex-direction:column;gap:3px}
+  .g-name:hover{background:var(--panel2)}
+  .g-name b{font-size:13px;font-weight:600}
+  .g-name span{font-size:11px;color:var(--muted)}
+  .g-track{position:relative;flex:1}
+  .g-bar{position:absolute;top:8px;height:22px;border-radius:6px;cursor:pointer;display:flex;align-items:center;padding:0 8px;font-size:11px;color:#06101f;font-weight:700;overflow:hidden;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+  .g-bar .fill{position:absolute;left:0;top:0;bottom:0;background:rgba(255,255,255,.28)}
+  .g-bar span{position:relative;z-index:1}
+  .g-today{position:absolute;top:0;bottom:0;width:2px;background:var(--red);z-index:3;pointer-events:none}
+  .g-today::after{content:"TODAY";position:absolute;top:-1px;left:3px;font-size:9px;color:var(--red);font-weight:700;background:var(--panel);padding:0 3px}
+  .legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:12px;font-size:12px;color:var(--muted)}
+  .legend .dot{width:11px;height:11px}
+
+  /* Trades */
+  .trade-card{display:flex;flex-direction:column;gap:8px}
+  .trade-card .head{display:flex;align-items:center;gap:10px}
+  .trade-card .swatch{width:34px;height:34px;border-radius:8px;flex:none}
+  .trade-card .cname{font-weight:700}
+  .trade-card .ttype{font-size:12px;color:var(--muted)}
+  .trade-card .line{font-size:13px;color:var(--muted)}
+  .trade-card .line b{color:var(--text);font-weight:600}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+  .chip{background:var(--panel2);border:1px solid var(--line);padding:2px 8px;border-radius:99px;font-size:11px;color:var(--muted)}
+
+  /* Modal */
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:flex-start;justify-content:center;z-index:50;padding:40px 16px;overflow:auto}
+  .modal-bg.open{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);width:100%;max-width:620px;box-shadow:var(--shadow)}
+  .modal header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--line)}
+  .modal header h3{margin:0;font-size:17px}
+  .modal .body{padding:20px}
+  .modal footer{display:flex;justify-content:space-between;gap:10px;padding:16px 20px;border-top:1px solid var(--line)}
+  .x{background:transparent;border:none;color:var(--muted);font-size:22px;line-height:1}
+  .x:hover{color:var(--text)}
+
+  .field{margin-bottom:14px}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.03em}
+  .field input,.field select,.field textarea{
+    width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);
+    padding:9px 11px;border-radius:8px
+  }
+  .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--accent)}
+  .field textarea{min-height:70px;resize:vertical}
+  .field-row{display:flex;gap:12px}
+  .field-row > .field{flex:1}
+  .range-val{font-weight:700;color:var(--accent)}
+
+  .photos{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+  .photos .ph{position:relative;width:78px;height:78px;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
+  .photos .ph img{width:100%;height:100%;object-fit:cover}
+  .photos .ph button{position:absolute;top:2px;right:2px;background:rgba(0,0,0,.6);border:none;color:#fff;width:18px;height:18px;border-radius:99px;font-size:12px;line-height:1;padding:0}
+
+  .empty{text-align:center;color:var(--muted);padding:48px 16px}
+  .muted{color:var(--muted)}
+  .right{text-align:right}
+  .nowrap{white-space:nowrap}
+  .warn{background:rgba(245,177,61,.12);border:1px solid rgba(245,177,61,.3);color:#f5d18a;padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:13px}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:10px 18px;border-radius:99px;box-shadow:var(--shadow);z-index:60;opacity:0;transition:opacity .2s;pointer-events:none}
+  .toast.show{opacity:1}
+  .filterbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
+  select.mini{background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:7px 10px;border-radius:8px}
+  .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{background:var(--panel);border:none;color:var(--muted);padding:7px 12px}
+  .seg button.active{background:var(--accent2);color:#fff}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand"><span class="logo">🏗️</span> BuildTrack</div>
+  <div class="proj-meta">
+    <b id="projName">—</b>
+    <span id="projAddr">—</span>
+  </div>
+  <div class="spacer"></div>
+  <button id="btnSettings" title="Project settings">⚙ Project</button>
+  <button id="btnExport" title="Download a backup of all your data">⬇ Backup</button>
+  <button id="btnImport" title="Restore from a backup file">⬆ Restore</button>
+  <input type="file" id="importFile" accept="application/json" hidden />
+</header>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="dashboard" class="active">Dashboard</button>
+  <button data-tab="schedule">Schedule</button>
+  <button data-tab="tasks">Tasks &amp; Phases</button>
+  <button data-tab="trades">Trades</button>
+  <button data-tab="budget">Budget</button>
+</nav>
+
+<main>
+  <!-- DASHBOARD -->
+  <section class="view active" id="view-dashboard">
+    <h2 class="section">Project Dashboard</h2>
+    <p class="sub">A live snapshot of your build.</p>
+    <div class="grid cards-4" id="dashStats"></div>
+
+    <div class="grid cards-3" style="margin-top:18px">
+      <div class="card">
+        <h3 style="margin:0 0 12px">Phase progress</h3>
+        <div id="dashPhases"></div>
+      </div>
+      <div class="card">
+        <h3 style="margin:0 0 12px">On site this week</h3>
+        <div id="dashThisWeek"></div>
+      </div>
+      <div class="card">
+        <h3 style="margin:0 0 12px">Coming up next</h3>
+        <div id="dashUpcoming"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCHEDULE / GANTT -->
+  <section class="view" id="view-schedule">
+    <h2 class="section">Schedule</h2>
+    <p class="sub">Timeline of every task. Bars on the same days = trades working side by side.</p>
+    <div id="conflictWarn"></div>
+    <div class="gantt-toolbar">
+      <div class="seg" id="ganttGroup">
+        <button data-g="phase" class="active">Group by phase</button>
+        <button data-g="trade">Group by trade</button>
+      </div>
+      <span class="spacer" style="flex:1"></span>
+      <button class="btn sm" id="btnAddTaskSched">+ Add task</button>
+    </div>
+    <div class="gantt-wrap"><div class="gantt" id="gantt"></div></div>
+    <div class="legend" id="ganttLegend"></div>
+  </section>
+
+  <!-- TASKS -->
+  <section class="view" id="view-tasks">
+    <h2 class="section">Tasks &amp; Phases</h2>
+    <p class="sub">Break the build into phases and track each task to completion.</p>
+    <div class="filterbar filterbar" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+      <select class="mini" id="filterPhase"><option value="">All phases</option></select>
+      <select class="mini" id="filterTrade"><option value="">All trades</option></select>
+      <select class="mini" id="filterStatus">
+        <option value="">All statuses</option>
+        <option value="notstarted">Not started</option>
+        <option value="inprogress">In progress</option>
+        <option value="blocked">Blocked</option>
+        <option value="done">Done</option>
+      </select>
+      <span style="flex:1"></span>
+      <button class="btn" id="btnAddTask">+ Add task</button>
+    </div>
+    <div id="tasksContainer"></div>
+  </section>
+
+  <!-- TRADES -->
+  <section class="view" id="view-trades">
+    <h2 class="section">Trades &amp; Contractors</h2>
+    <p class="sub">Your directory of everyone working the job.</p>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+      <button class="btn" id="btnAddTrade">+ Add trade</button>
+    </div>
+    <div class="grid cards-3" id="tradesContainer"></div>
+  </section>
+
+  <!-- BUDGET -->
+  <section class="view" id="view-budget">
+    <h2 class="section">Budget</h2>
+    <p class="sub">Estimated vs. actual cost, by phase and task.</p>
+    <div class="grid cards-4" id="budgetStats" style="margin-bottom:18px"></div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <table id="budgetTable"></table>
+    </div>
+  </section>
+</main>
+
+<!-- TASK MODAL -->
+<div class="modal-bg" id="taskModal">
+  <div class="modal">
+    <header><h3 id="taskModalTitle">Task</h3><button class="x" data-close>×</button></header>
+    <div class="body">
+      <div class="field">
+        <label>Task name</label>
+        <input id="t_name" placeholder="e.g. Plumbing rough-in" />
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Phase</label>
+          <select id="t_phase"></select>
+        </div>
+        <div class="field">
+          <label>Trade / responsible</label>
+          <select id="t_trade"></select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Start date</label>
+          <input type="date" id="t_start" />
+        </div>
+        <div class="field">
+          <label>End date</label>
+          <input type="date" id="t_end" />
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Status</label>
+          <select id="t_status">
+            <option value="notstarted">Not started</option>
+            <option value="inprogress">In progress</option>
+            <option value="blocked">Blocked</option>
+            <option value="done">Done</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Progress — <span class="range-val" id="t_progress_val">0%</span></label>
+          <input type="range" id="t_progress" min="0" max="100" step="5" value="0" />
+        </div>
+      </div>
+      <div class="field">
+        <label>Depends on (won't start until these finish)</label>
+        <select id="t_depends" multiple size="4"></select>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Estimated cost ($)</label>
+          <input type="number" id="t_est" min="0" step="100" placeholder="0" />
+        </div>
+        <div class="field">
+          <label>Actual cost ($)</label>
+          <input type="number" id="t_actual" min="0" step="100" placeholder="0" />
+        </div>
+      </div>
+      <div class="field">
+        <label>Notes</label>
+        <textarea id="t_notes" placeholder="Permit #, inspection notes, materials…"></textarea>
+      </div>
+      <div class="field">
+        <label>Progress photos</label>
+        <input type="file" id="t_photoInput" accept="image/*" multiple />
+        <div class="photos" id="t_photos"></div>
+      </div>
+    </div>
+    <footer>
+      <button class="btn danger" id="t_delete">Delete</button>
+      <div class="row-actions">
+        <button class="btn ghost" data-close>Cancel</button>
+        <button class="btn" id="t_save">Save task</button>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<!-- TRADE MODAL -->
+<div class="modal-bg" id="tradeModal">
+  <div class="modal">
+    <header><h3 id="tradeModalTitle">Trade</h3><button class="x" data-close>×</button></header>
+    <div class="body">
+      <div class="field-row">
+        <div class="field">
+          <label>Trade type</label>
+          <input id="r_type" placeholder="e.g. Electrician" />
+        </div>
+        <div class="field">
+          <label>Color</label>
+          <input type="color" id="r_color" value="#4f8cff" style="height:40px;padding:4px" />
+        </div>
+      </div>
+      <div class="field">
+        <label>Company name</label>
+        <input id="r_company" placeholder="e.g. Sunshine Electric LLC" />
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Contact person</label>
+          <input id="r_contact" placeholder="Name" />
+        </div>
+        <div class="field">
+          <label>Phone</label>
+          <input id="r_phone" placeholder="(954) 555-0100" />
+        </div>
+      </div>
+      <div class="field">
+        <label>Email</label>
+        <input id="r_email" placeholder="name@company.com" />
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>License #</label>
+          <input id="r_license" placeholder="FL license" />
+        </div>
+        <div class="field">
+          <label>Day rate / bid ($)</label>
+          <input type="number" id="r_rate" min="0" step="50" placeholder="0" />
+        </div>
+      </div>
+      <div class="field">
+        <label>Notes</label>
+        <textarea id="r_notes" placeholder="Availability, crew size, insurance on file…"></textarea>
+      </div>
+    </div>
+    <footer>
+      <button class="btn danger" id="r_delete">Delete</button>
+      <div class="row-actions">
+        <button class="btn ghost" data-close>Cancel</button>
+        <button class="btn" id="r_save">Save trade</button>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="modal-bg" id="settingsModal">
+  <div class="modal">
+    <header><h3>Project settings</h3><button class="x" data-close>×</button></header>
+    <div class="body">
+      <div class="field">
+        <label>Project name</label>
+        <input id="s_name" placeholder="e.g. Las Olas Residence" />
+      </div>
+      <div class="field">
+        <label>Address</label>
+        <input id="s_addr" placeholder="Street, Fort Lauderdale, FL" />
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Target start</label>
+          <input type="date" id="s_start" />
+        </div>
+        <div class="field">
+          <label>Total budget ($)</label>
+          <input type="number" id="s_budget" min="0" step="1000" placeholder="0" />
+        </div>
+      </div>
+      <hr style="border:none;border-top:1px solid var(--line);margin:18px 0" />
+      <button class="btn danger" id="s_reset">Reset everything &amp; reload sample data</button>
+    </div>
+    <footer>
+      <span></span>
+      <div class="row-actions">
+        <button class="btn ghost" data-close>Cancel</button>
+        <button class="btn" id="s_save">Save</button>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ============================================================
+   BuildTrack — single-file house construction manager
+   All data lives in localStorage. No server, fully offline.
+============================================================ */
+
+const STORE_KEY = "buildtrack.v1";
+const DAY = 86400000;
+const uid = () => Math.random().toString(36).slice(2,9);
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+
+/* ---------- date helpers (work in local YYYY-MM-DD strings) ---------- */
+const toISO = d => {
+  const x = new Date(d);
+  return new Date(x.getTime() - x.getTimezoneOffset()*60000).toISOString().slice(0,10);
+};
+const parseD = s => { const [y,m,d]=s.split("-").map(Number); return new Date(y,m-1,d); };
+const fmtD = s => s ? parseD(s).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"}) : "—";
+const fmtDShort = s => s ? parseD(s).toLocaleDateString(undefined,{month:"short",day:"numeric"}) : "—";
+const todayISO = () => toISO(new Date());
+const daysBetween = (a,b) => Math.round((parseD(b)-parseD(a))/DAY);
+const addDays = (s,n) => toISO(new Date(parseD(s).getTime()+n*DAY));
+const money = n => "$"+(Number(n)||0).toLocaleString(undefined,{maximumFractionDigits:0});
+
+/* ============================================================
+   Seed data — realistic Ft. Lauderdale, FL custom home build
+============================================================ */
+function seed(){
+  const start = todayISO();
+  // build relative dates from "start"
+  const D = n => addDays(start, n);
+
+  const phases = [
+    {id:"ph_permit", name:"Permitting & Site Prep", color:"#8a94a6"},
+    {id:"ph_found",  name:"Foundation & Slab",      color:"#b07a4a"},
+    {id:"ph_shell",  name:"Structure & Shell (CBS)", color:"#c0883f"},
+    {id:"ph_roof",   name:"Roofing & Dry-in",       color:"#d65f5f"},
+    {id:"ph_window", name:"Impact Windows & Doors",  color:"#5aa6d6"},
+    {id:"ph_rough",  name:"MEP Rough-ins",           color:"#7c6bd6"},
+    {id:"ph_insp1",  name:"Rough Inspections",       color:"#9aa4b2"},
+    {id:"ph_close",  name:"Insulation & Drywall",    color:"#5fb98a"},
+    {id:"ph_finish", name:"Interior Finishes",       color:"#4f8cff"},
+    {id:"ph_ext",    name:"Exterior & Site",         color:"#6fae5a"},
+    {id:"ph_final",  name:"Trim-out & Final",        color:"#37c871"},
+  ];
+
+  const trades = [
+    {id:"tr_gc",    type:"General Contractor", company:"You / GC",            contact:"Project Owner", phone:"", email:"", license:"", rate:0, color:"#e7ebf0", notes:"Self-managed build."},
+    {id:"tr_site",  type:"Site/Excavation",   company:"Broward Site Works",   contact:"Luis",  phone:"(954) 555-0110", email:"", license:"", rate:1800, color:"#8a94a6", notes:"Clearing, fill, compaction."},
+    {id:"tr_conc",  type:"Concrete",          company:"Atlantic Concrete",    contact:"Marco", phone:"(954) 555-0120", email:"", license:"", rate:0,    color:"#b07a4a", notes:"Slab + tie beams."},
+    {id:"tr_mason", type:"Masonry / Block",   company:"Coastal Masonry",      contact:"Hector",phone:"(954) 555-0130", email:"", license:"", rate:0,    color:"#c0883f", notes:"CBS block walls."},
+    {id:"tr_frame", type:"Framing/Trusses",   company:"Gulfstream Framing",   contact:"Dale",  phone:"(954) 555-0140", email:"", license:"", rate:0,    color:"#caa15a", notes:"Roof trusses + tie-downs."},
+    {id:"tr_roof",  type:"Roofing",           company:"Sunrise Roofing",      contact:"Tom",   phone:"(954) 555-0150", email:"", license:"CCC-000", rate:0, color:"#d65f5f", notes:"Tile roof, HVHZ rated."},
+    {id:"tr_win",   type:"Windows & Doors",   company:"Impact Glass FL",      contact:"Rosa",  phone:"(954) 555-0160", email:"", license:"", rate:0,    color:"#5aa6d6", notes:"Miami-Dade NOA impact units."},
+    {id:"tr_plumb", type:"Plumber",           company:"Tidewater Plumbing",   contact:"Greg",  phone:"(954) 555-0170", email:"", license:"CFC-000", rate:0, color:"#7c6bd6", notes:"Rough + trim."},
+    {id:"tr_elec",  type:"Electrician",       company:"Sunshine Electric",    contact:"Priya", phone:"(954) 555-0180", email:"", license:"EC-000", rate:0, color:"#f5b13d", notes:"Rough + trim + panel."},
+    {id:"tr_hvac",  type:"HVAC",              company:"CoolBreeze A/C",       contact:"Sam",   phone:"(954) 555-0190", email:"", license:"CAC-000", rate:0, color:"#4fb6c8", notes:"Ductwork + condensers."},
+    {id:"tr_lv",    type:"Low Voltage",       company:"SmartHome Wiring",     contact:"Kevin", phone:"(954) 555-0200", email:"", license:"", rate:0,    color:"#9b6bff", notes:"Network, security, AV."},
+    {id:"tr_dry",   type:"Drywall",           company:"Pro Drywall",          contact:"Andre", phone:"(954) 555-0210", email:"", license:"", rate:0,    color:"#5fb98a", notes:"Hang, tape, finish."},
+    {id:"tr_paint", type:"Painter",           company:"Coastal Coatings",     contact:"Maria", phone:"(954) 555-0220", email:"", license:"", rate:0,    color:"#6fae5a", notes:"Interior + exterior."},
+    {id:"tr_tile",  type:"Tile/Flooring",     company:"Las Olas Flooring",    contact:"Nina",  phone:"(954) 555-0230", email:"", license:"", rate:0,    color:"#4f8cff", notes:"Porcelain + wood."},
+    {id:"tr_cab",   type:"Cabinets/Counters", company:"Riverwalk Cabinetry",  contact:"Paul",  phone:"(954) 555-0240", email:"", license:"", rate:0,    color:"#c08a4f", notes:"Kitchen + baths."},
+    {id:"tr_stucco",type:"Stucco",            company:"Florida Stucco Co",    contact:"Jorge", phone:"(954) 555-0250", email:"", license:"", rate:0,    color:"#caa15a", notes:"3-coat exterior."},
+  ];
+
+  // tasks: relative day offsets create realistic parallel/overlapping work
+  const T = (name,ph,tr,s,len,prog,status,deps,est) => ({
+    id:uid(), name, phaseId:ph, tradeId:tr, start:D(s), end:D(s+len),
+    progress:prog, status, dependsOn:deps||[], est:est||0, actual:0, notes:"", photos:[]
+  });
+
+  const tasks = [
+    T("Pull building permit","ph_permit","tr_gc",0,20,40,"inprogress",[],3500),
+    T("Survey & site clearing","ph_permit","tr_site",14,6,0,"notstarted",[],8000),
+    T("Fill, grade & compaction","ph_permit","tr_site",20,5,0,"notstarted",[],12000),
+
+    T("Form & pour slab","ph_found","tr_conc",26,7,0,"notstarted",[],45000),
+    T("Slab cure & inspection","ph_found","tr_gc",33,5,0,"notstarted",[],0),
+
+    T("CBS block walls — 1st floor","ph_shell","tr_mason",38,12,0,"notstarted",[],38000),
+    T("Tie beam & columns pour","ph_shell","tr_conc",50,5,0,"notstarted",[],14000),
+
+    T("Set roof trusses","ph_roof","tr_frame",55,6,0,"notstarted",[],26000),
+    T("Hurricane straps & tie-downs","ph_roof","tr_frame",61,3,0,"notstarted",[],0),
+    T("Roof sheathing & dry-in","ph_roof","tr_roof",64,5,0,"notstarted",[],0),
+    T("Tile roof install","ph_roof","tr_roof",72,10,0,"notstarted",[],58000),
+
+    T("Install impact windows & doors","ph_window","tr_win",69,8,0,"notstarted",[],62000),
+
+    // ---- Parallel MEP rough-ins (the side-by-side crews) ----
+    T("Plumbing rough-in","ph_rough","tr_plumb",78,9,0,"notstarted",[],32000),
+    T("Electrical rough-in","ph_rough","tr_elec",78,10,0,"notstarted",[],40000),
+    T("HVAC ductwork & rough-in","ph_rough","tr_hvac",80,8,0,"notstarted",[],36000),
+    T("Low-voltage / smart home rough","ph_rough","tr_lv",82,6,0,"notstarted",[],14000),
+
+    T("Rough MEP inspections","ph_insp1","tr_gc",90,4,0,"notstarted",[],0),
+
+    T("Insulation","ph_close","tr_dry",95,4,0,"notstarted",[],11000),
+    T("Drywall hang & finish","ph_close","tr_dry",99,12,0,"notstarted",[],28000),
+
+    // ---- Parallel interior finishes ----
+    T("Interior paint — primer/base","ph_finish","tr_paint",112,7,0,"notstarted",[],16000),
+    T("Tile & flooring","ph_finish","tr_tile",116,14,0,"notstarted",[],42000),
+    T("Cabinets & countertops","ph_finish","tr_cab",122,10,0,"notstarted",[],55000),
+
+    // ---- Parallel exterior work ----
+    T("Exterior stucco — 3 coat","ph_ext","tr_stucco",92,15,0,"notstarted",[],34000),
+    T("Exterior paint","ph_ext","tr_paint",110,6,0,"notstarted",[],12000),
+    T("Driveway & hardscape","ph_ext","tr_conc",125,7,0,"notstarted",[],22000),
+
+    // ---- Final trim-out (parallel) ----
+    T("Plumbing trim & fixtures","ph_final","tr_plumb",132,5,0,"notstarted",[],9000),
+    T("Electrical trim & fixtures","ph_final","tr_elec",132,6,0,"notstarted",[],11000),
+    T("HVAC start-up & balance","ph_final","tr_hvac",133,3,0,"notstarted",[],4000),
+    T("Final paint touch-up","ph_final","tr_paint",136,4,0,"notstarted",[],3000),
+    T("Final inspection & CO","ph_final","tr_gc",142,5,0,"notstarted",[],0),
+  ];
+
+  return {
+    project:{ name:"Las Olas Residence", address:"Fort Lauderdale, FL", start, budget:850000 },
+    phases, trades, tasks
+  };
+}
+
+/* ============================================================
+   Store
+============================================================ */
+let state = load();
+function load(){
+  try{
+    const raw = localStorage.getItem(STORE_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){ console.warn("load failed", e); }
+  const s = seed();
+  localStorage.setItem(STORE_KEY, JSON.stringify(s));
+  return s;
+}
+let saveTimer=null;
+function save(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(()=>{
+    try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+    catch(e){ toast("⚠ Storage full — remove some photos"); }
+  }, 150);
+}
+const phaseById = id => state.phases.find(p=>p.id===id);
+const tradeById = id => state.trades.find(t=>t.id===id);
+const taskById  = id => state.tasks.find(t=>t.id===id);
+
+/* ============================================================
+   Toast
+============================================================ */
+let toastTimer;
+function toast(msg){
+  const el=$("#toast"); el.textContent=msg; el.classList.add("show");
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove("show"),1900);
+}
+
+/* ============================================================
+   Tabs
+============================================================ */
+$("#tabs").addEventListener("click", e=>{
+  const b=e.target.closest("button[data-tab]"); if(!b) return;
+  $$("#tabs button").forEach(x=>x.classList.toggle("active", x===b));
+  $$(".view").forEach(v=>v.classList.toggle("active", v.id==="view-"+b.dataset.tab));
+  renderAll();
+});
+
+/* ============================================================
+   STATUS helpers
+============================================================ */
+const STATUS = {
+  notstarted:{label:"Not started", cls:"status-notstarted"},
+  inprogress:{label:"In progress", cls:"status-inprogress"},
+  blocked:   {label:"Blocked",     cls:"status-blocked"},
+  done:      {label:"Done",        cls:"status-done"},
+};
+const statusPill = s => `<span class="pill ${STATUS[s].cls}">${STATUS[s].label}</span>`;
+
+/* ============================================================
+   DASHBOARD
+============================================================ */
+function renderDashboard(){
+  const tasks=state.tasks;
+  const overall = tasks.length ? Math.round(tasks.reduce((a,t)=>a+(t.progress||0),0)/tasks.length) : 0;
+  const done = tasks.filter(t=>t.status==="done").length;
+  const active = tasks.filter(t=>t.status==="inprogress").length;
+  const blocked = tasks.filter(t=>t.status==="blocked").length;
+  const estTotal = tasks.reduce((a,t)=>a+(+t.est||0),0);
+  const actualTotal = tasks.reduce((a,t)=>a+(+t.actual||0),0);
+
+  // schedule span
+  const dates = tasks.flatMap(t=>[t.start,t.end]).filter(Boolean).sort();
+  const finish = dates.length? dates[dates.length-1] : null;
+  const daysLeft = finish? daysBetween(todayISO(), finish) : 0;
+
+  $("#dashStats").innerHTML = `
+    ${stat("Overall progress", overall+"%", `<div class="bar"><i style="width:${overall}%"></i></div>`)}
+    ${stat("Tasks", `${done}<small> / ${tasks.length} done</small>`, `<span class="muted" style="font-size:12px">${active} active · ${blocked} blocked</span>`)}
+    ${stat("Budget", money(state.project.budget), `<span class="muted" style="font-size:12px">Est ${money(estTotal)} · Spent ${money(actualTotal)}</span>`)}
+    ${stat("Target finish", finish?fmtDShort(finish):"—", `<span class="muted" style="font-size:12px">${finish? (daysLeft>=0? daysLeft+" days to go":Math.abs(daysLeft)+" days over"):"set task dates"}</span>`)}
+  `;
+
+  // phase progress
+  $("#dashPhases").innerHTML = state.phases.map(p=>{
+    const pt = tasks.filter(t=>t.phaseId===p.id);
+    const pr = pt.length? Math.round(pt.reduce((a,t)=>a+(t.progress||0),0)/pt.length):0;
+    return `<div style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;font-size:13px">
+        <span><span class="dot" style="background:${p.color}"></span> ${p.name}</span>
+        <b>${pr}%</b>
+      </div>
+      <div class="bar"><i style="width:${pr}%;background:${p.color}"></i></div>
+    </div>`;
+  }).join("") || `<p class="muted">No phases yet.</p>`;
+
+  // this week & upcoming
+  const today=todayISO(); const weekEnd=addDays(today,7);
+  const onSite = tasks.filter(t=>t.start && t.end && t.start<=weekEnd && t.end>=today && t.status!=="done")
+                      .sort((a,b)=>a.start.localeCompare(b.start));
+  $("#dashThisWeek").innerHTML = onSite.length? onSite.map(taskMiniRow).join("")
+      : `<p class="muted">No trades scheduled in the next 7 days.</p>`;
+
+  const upcoming = tasks.filter(t=>t.start>weekEnd && t.status!=="done")
+                        .sort((a,b)=>a.start.localeCompare(b.start)).slice(0,6);
+  $("#dashUpcoming").innerHTML = upcoming.length? upcoming.map(taskMiniRow).join("")
+      : `<p class="muted">Nothing further scheduled.</p>`;
+}
+function stat(label,value,extra){
+  return `<div class="card stat"><div class="label">${label}</div><div class="value">${value}</div>${extra||""}</div>`;
+}
+function taskMiniRow(t){
+  const tr=tradeById(t.tradeId);
+  return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);cursor:pointer" onclick="openTask('${t.id}')">
+    <span class="dot" style="background:${tr?tr.color:'#888'}"></span>
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:600">${esc(t.name)}</div>
+      <div class="muted" style="font-size:11px">${tr?esc(tr.type):''} · ${fmtDShort(t.start)}–${fmtDShort(t.end)}</div>
+    </div>
+    ${statusPill(t.status)}
+  </div>`;
+}
+
+/* ============================================================
+   GANTT
+============================================================ */
+let ganttGroupBy="phase";
+$("#ganttGroup").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  ganttGroupBy=b.dataset.g;
+  $$("#ganttGroup button").forEach(x=>x.classList.toggle("active",x===b));
+  renderGantt();
+});
+
+function scheduleConflicts(){
+  // a task whose start is before a dependency's end
+  const issues=[];
+  state.tasks.forEach(t=>{
+    (t.dependsOn||[]).forEach(dep=>{
+      const d=taskById(dep);
+      if(d && t.start && d.end && t.start < d.end){
+        issues.push(`“${t.name}” starts ${fmtDShort(t.start)} but depends on “${d.name}” which ends ${fmtDShort(d.end)}.`);
+      }
+    });
+  });
+  return issues;
+}
+
+function renderGantt(){
+  const tasks=state.tasks.filter(t=>t.start && t.end);
+  const wrap=$("#gantt");
+  if(!tasks.length){ wrap.innerHTML=`<div class="empty">No scheduled tasks yet. Add a task with start & end dates.</div>`; $("#ganttLegend").innerHTML=""; $("#conflictWarn").innerHTML=""; return; }
+
+  // conflicts banner
+  const issues=scheduleConflicts();
+  $("#conflictWarn").innerHTML = issues.length
+    ? `<div class="warn"><b>⚠ ${issues.length} schedule ${issues.length>1?'conflicts':'conflict'}:</b><br>${issues.slice(0,4).map(esc).join("<br>")}${issues.length>4?`<br>…and ${issues.length-4} more`:''}</div>`
+    : "";
+
+  // range padded to month boundaries
+  const allDates=tasks.flatMap(t=>[t.start,t.end]).sort();
+  let min=parseD(allDates[0]); min=new Date(min.getFullYear(),min.getMonth(),1);
+  let maxD=parseD(allDates[allDates.length-1]); let max=new Date(maxD.getFullYear(),maxD.getMonth()+1,0);
+  const minISO=toISO(min), maxISO=toISO(max);
+  const totalDays=daysBetween(minISO,maxISO)+1;
+  const pxPerDay=Math.max(5, Math.min(14, 900/totalDays));
+  const trackW=totalDays*pxPerDay;
+
+  // month columns
+  let months=[]; let cur=new Date(min);
+  while(cur<=max){
+    const mStart=new Date(cur.getFullYear(),cur.getMonth(),1);
+    const mEnd=new Date(cur.getFullYear(),cur.getMonth()+1,0);
+    const days=daysBetween(toISO(mStart),toISO(mEnd))+1;
+    months.push({label:cur.toLocaleDateString(undefined,{month:"short",year:"2-digit"}), w:days*pxPerDay});
+    cur=new Date(cur.getFullYear(),cur.getMonth()+1,1);
+  }
+
+  // group
+  let groups;
+  if(ganttGroupBy==="phase"){
+    groups=state.phases.map(p=>({label:p.name,color:p.color,items:tasks.filter(t=>t.phaseId===p.id)})).filter(g=>g.items.length);
+  } else {
+    groups=state.trades.map(tr=>({label:tr.type+" — "+tr.company,color:tr.color,items:tasks.filter(t=>t.tradeId===tr.id)})).filter(g=>g.items.length);
+  }
+  // sort items within group by start
+  groups.forEach(g=>g.items.sort((a,b)=>a.start.localeCompare(b.start)));
+
+  const offX = s => daysBetween(minISO,s)*pxPerDay;
+  const barW = (s,e) => Math.max(pxPerDay,(daysBetween(s,e)+1)*pxPerDay);
+
+  let html=`<div class="g-head">
+    <div class="g-namecol">Task</div>
+    <div class="g-timeline" style="width:${trackW}px"><div class="g-months">
+      ${months.map(m=>`<div class="g-month" style="width:${m.w}px">${m.label}</div>`).join("")}
+    </div></div>
+  </div>`;
+
+  const todayOff = (todayISO()>=minISO && todayISO()<=maxISO)? offX(todayISO()) : -1;
+
+  groups.forEach(g=>{
+    html+=`<div style="display:flex">
+      <div class="g-phase-label" style="width:230px;flex:none;border-right:1px solid var(--line)"><span class="dot" style="background:${g.color}"></span> ${esc(g.label)}</div>
+      <div class="g-phase-label" style="flex:1;width:${trackW}px"></div>
+    </div>`;
+    g.items.forEach(t=>{
+      const tr=tradeById(t.tradeId);
+      const color=ganttGroupBy==="phase" ? (tr?tr.color:"#888") : (phaseById(t.phaseId)?.color||"#888");
+      const dim = t.status==="done";
+      html+=`<div class="g-row">
+        <div class="g-name" onclick="openTask('${t.id}')">
+          <b>${esc(t.name)}</b>
+          <span>${tr?esc(tr.type):''} · ${fmtDShort(t.start)}–${fmtDShort(t.end)}</span>
+        </div>
+        <div class="g-track" style="width:${trackW}px">
+          ${todayOff>=0?`<div class="g-today" style="left:${todayOff}px"></div>`:""}
+          <div class="g-bar" title="${esc(t.name)} — ${t.progress||0}%"
+               style="left:${offX(t.start)}px;width:${barW(t.start,t.end)}px;background:${color};opacity:${dim?0.55:1}"
+               onclick="openTask('${t.id}')">
+            <div class="fill" style="width:${t.progress||0}%"></div>
+            <span>${t.progress||0}%</span>
+          </div>
+        </div>
+      </div>`;
+    });
+  });
+
+  wrap.innerHTML=html;
+
+  // legend
+  const legendItems = ganttGroupBy==="phase" ? state.trades : state.phases;
+  $("#ganttLegend").innerHTML = `<span>Bars colored by ${ganttGroupBy==="phase"?"trade":"phase"}:</span> ` +
+    legendItems.map(x=>`<span><span class="dot" style="background:${x.color}"></span>${esc(x.type||x.name)}</span>`).join("");
+}
+
+/* ============================================================
+   TASKS view
+============================================================ */
+function populateFilters(){
+  const ph=$("#filterPhase"), trf=$("#filterTrade");
+  const phVal=ph.value, trVal=trf.value;
+  ph.innerHTML=`<option value="">All phases</option>`+state.phases.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");
+  trf.innerHTML=`<option value="">All trades</option>`+state.trades.map(t=>`<option value="${t.id}">${esc(t.type)} — ${esc(t.company)}</option>`).join("");
+  ph.value=phVal; trf.value=trVal;
+}
+["filterPhase","filterTrade","filterStatus"].forEach(id=>{
+  document.addEventListener("input",e=>{ if(e.target.id===id) renderTasks(); });
+});
+
+function renderTasks(){
+  populateFilters();
+  const fp=$("#filterPhase").value, ft=$("#filterTrade").value, fs=$("#filterStatus").value;
+  const cont=$("#tasksContainer");
+  const phases = fp? state.phases.filter(p=>p.id===fp) : state.phases;
+  let html="";
+  let any=false;
+  phases.forEach(p=>{
+    let items=state.tasks.filter(t=>t.phaseId===p.id);
+    if(ft) items=items.filter(t=>t.tradeId===ft);
+    if(fs) items=items.filter(t=>t.status===fs);
+    items.sort((a,b)=>(a.start||"").localeCompare(b.start||""));
+    if(!items.length) return;
+    any=true;
+    const pr = items.length? Math.round(items.reduce((a,t)=>a+(t.progress||0),0)/items.length):0;
+    html+=`<div class="card" style="margin-bottom:16px;padding:0;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--panel2);border-bottom:1px solid var(--line)">
+        <span class="dot" style="background:${p.color}"></span>
+        <b>${esc(p.name)}</b>
+        <span class="muted" style="font-size:12px">${items.length} task${items.length>1?'s':''} · ${pr}%</span>
+        <div style="flex:1"></div>
+        <div class="bar" style="width:120px;margin:0"><i style="width:${pr}%;background:${p.color}"></i></div>
+      </div>
+      <table><thead><tr>
+        <th>Task</th><th>Trade</th><th class="nowrap">Dates</th><th>Status</th><th style="width:140px">Progress</th><th class="num">Est</th><th></th>
+      </tr></thead><tbody>
+      ${items.map(t=>{
+        const tr=tradeById(t.tradeId);
+        return `<tr>
+          <td><b>${esc(t.name)}</b>${t.photos&&t.photos.length?` <span class="muted" title="${t.photos.length} photo(s)">📷${t.photos.length}</span>`:''}</td>
+          <td><span class="dot" style="background:${tr?tr.color:'#888'}"></span> ${tr?esc(tr.type):'<span class="muted">—</span>'}</td>
+          <td class="nowrap muted" style="font-size:12px">${fmtDShort(t.start)}–${fmtDShort(t.end)}</td>
+          <td>${statusPill(t.status)}</td>
+          <td><div class="bar" style="margin:0"><i style="width:${t.progress||0}%"></i></div><span class="muted" style="font-size:11px">${t.progress||0}%</span></td>
+          <td class="num">${t.est?money(t.est):'<span class="muted">—</span>'}</td>
+          <td class="right"><button class="btn ghost sm" onclick="openTask('${t.id}')">Edit</button></td>
+        </tr>`;
+      }).join("")}
+      </tbody></table>
+    </div>`;
+  });
+  cont.innerHTML = any? html : `<div class="empty">No tasks match these filters.</div>`;
+}
+
+/* ============================================================
+   TRADES view
+============================================================ */
+function renderTrades(){
+  const cont=$("#tradesContainer");
+  if(!state.trades.length){ cont.innerHTML=`<div class="empty">No trades yet. Add your first contractor.</div>`; return; }
+  cont.innerHTML = state.trades.map(tr=>{
+    const assigned=state.tasks.filter(t=>t.tradeId===tr.id);
+    const upcoming=assigned.filter(t=>t.status!=="done").sort((a,b)=>(a.start||"").localeCompare(b.start||""));
+    return `<div class="card trade-card">
+      <div class="head">
+        <div class="swatch" style="background:${tr.color}"></div>
+        <div style="flex:1">
+          <div class="cname">${esc(tr.company||"—")}</div>
+          <div class="ttype">${esc(tr.type||"")}</div>
+        </div>
+        <button class="btn ghost sm" onclick="openTrade('${tr.id}')">Edit</button>
+      </div>
+      ${tr.contact?`<div class="line"><b>Contact:</b> ${esc(tr.contact)}</div>`:''}
+      ${tr.phone?`<div class="line"><b>📞</b> <a href="tel:${esc(tr.phone)}">${esc(tr.phone)}</a></div>`:''}
+      ${tr.email?`<div class="line"><b>✉</b> <a href="mailto:${esc(tr.email)}">${esc(tr.email)}</a></div>`:''}
+      ${tr.license?`<div class="line"><b>Lic:</b> ${esc(tr.license)}</div>`:''}
+      ${tr.notes?`<div class="line muted">${esc(tr.notes)}</div>`:''}
+      <div class="chips">
+        <span class="chip">${assigned.length} task${assigned.length!==1?'s':''}</span>
+        ${upcoming.slice(0,3).map(t=>`<span class="chip" title="${fmtDShort(t.start)}">${esc(t.name)}</span>`).join("")}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+/* ============================================================
+   BUDGET view
+============================================================ */
+function renderBudget(){
+  const tasks=state.tasks;
+  const est=tasks.reduce((a,t)=>a+(+t.est||0),0);
+  const actual=tasks.reduce((a,t)=>a+(+t.actual||0),0);
+  const budget=+state.project.budget||0;
+  const remaining=budget-actual;
+  $("#budgetStats").innerHTML=`
+    ${stat("Total budget", money(budget),"")}
+    ${stat("Estimated cost", money(est), `<span class="muted" style="font-size:12px">${budget?Math.round(est/budget*100):0}% of budget</span>`)}
+    ${stat("Spent to date", money(actual), `<div class="bar"><i style="width:${budget?Math.min(100,actual/budget*100):0}%"></i></div>`)}
+    ${stat("Remaining", money(remaining), `<span class="muted" style="font-size:12px">${remaining<0?'over budget':'available'}</span>`)}
+  `;
+
+  let rows="";
+  state.phases.forEach(p=>{
+    const items=tasks.filter(t=>t.phaseId===p.id);
+    if(!items.length) return;
+    const pe=items.reduce((a,t)=>a+(+t.est||0),0);
+    const pa=items.reduce((a,t)=>a+(+t.actual||0),0);
+    rows+=`<tr style="background:var(--panel2)">
+      <td colspan="2"><span class="dot" style="background:${p.color}"></span> <b>${esc(p.name)}</b></td>
+      <td class="num"><b>${money(pe)}</b></td>
+      <td class="num"><b>${money(pa)}</b></td>
+      <td class="num"><b>${diffCell(pe,pa)}</b></td>
+    </tr>`;
+    items.forEach(t=>{
+      const tr=tradeById(t.tradeId);
+      rows+=`<tr>
+        <td style="padding-left:28px">${esc(t.name)}</td>
+        <td class="muted">${tr?esc(tr.type):'—'}</td>
+        <td class="num">${money(t.est)}</td>
+        <td class="num">${money(t.actual)}</td>
+        <td class="num">${diffCell(+t.est||0,+t.actual||0)}</td>
+      </tr>`;
+    });
+  });
+  $("#budgetTable").innerHTML=`<thead><tr>
+    <th>Item</th><th>Trade</th><th class="num">Estimated</th><th class="num">Actual</th><th class="num">Variance</th>
+  </tr></thead><tbody>${rows||`<tr><td colspan="5" class="empty">No budget items.</td></tr>`}</tbody>`;
+}
+function diffCell(est,actual){
+  if(!actual) return '<span class="muted">—</span>';
+  const v=actual-est;
+  const c = v>0? "#ff9b91" : "#7ee6a6";
+  return `<span style="color:${c}">${v>0?'+':''}${money(v)}</span>`;
+}
+
+/* ============================================================
+   TASK modal
+============================================================ */
+let editingTask=null;
+function openTask(id){
+  editingTask = id? taskById(id) : null;
+  const t = editingTask || {name:"",phaseId:state.phases[0]?.id,tradeId:"",start:todayISO(),end:addDays(todayISO(),5),status:"notstarted",progress:0,dependsOn:[],est:0,actual:0,notes:"",photos:[]};
+  $("#taskModalTitle").textContent = editingTask? "Edit task" : "New task";
+  $("#t_name").value=t.name;
+  $("#t_phase").innerHTML=state.phases.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");
+  $("#t_phase").value=t.phaseId;
+  $("#t_trade").innerHTML=`<option value="">— unassigned —</option>`+state.trades.map(tr=>`<option value="${tr.id}">${esc(tr.type)} — ${esc(tr.company)}</option>`).join("");
+  $("#t_trade").value=t.tradeId||"";
+  $("#t_start").value=t.start; $("#t_end").value=t.end;
+  $("#t_status").value=t.status;
+  $("#t_progress").value=t.progress||0; $("#t_progress_val").textContent=(t.progress||0)+"%";
+  $("#t_est").value=t.est||""; $("#t_actual").value=t.actual||"";
+  $("#t_notes").value=t.notes||"";
+  // depends
+  $("#t_depends").innerHTML=state.tasks.filter(x=>x.id!==t.id).map(x=>`<option value="${x.id}" ${(t.dependsOn||[]).includes(x.id)?'selected':''}>${esc(x.name)}</option>`).join("");
+  // photos
+  renderTaskPhotos(t.photos||[]);
+  $("#t_delete").style.display = editingTask? "" : "none";
+  openModal("#taskModal");
+}
+window.openTask=openTask;
+
+let workingPhotos=[];
+function renderTaskPhotos(photos){
+  workingPhotos = photos.slice();
+  $("#t_photos").innerHTML=workingPhotos.map((p,i)=>`<div class="ph"><img src="${p}" /><button onclick="rmPhoto(${i})">×</button></div>`).join("");
+}
+window.rmPhoto=i=>{ workingPhotos.splice(i,1); renderTaskPhotos(workingPhotos); };
+
+$("#t_photoInput").addEventListener("change",e=>{
+  const files=[...e.target.files];
+  files.forEach(f=>{
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      // downscale to keep localStorage small
+      const img=new Image();
+      img.onload=()=>{
+        const max=900; let{width:w,height:h}=img;
+        if(w>max||h>max){ const r=Math.min(max/w,max/h); w=Math.round(w*r); h=Math.round(h*r); }
+        const c=document.createElement("canvas"); c.width=w; c.height=h;
+        c.getContext("2d").drawImage(img,0,0,w,h);
+        workingPhotos.push(c.toDataURL("image/jpeg",0.7));
+        renderTaskPhotos(workingPhotos);
+      };
+      img.src=ev.target.result;
+    };
+    reader.readAsDataURL(f);
+  });
+  e.target.value="";
+});
+
+$("#t_progress").addEventListener("input",e=>{ $("#t_progress_val").textContent=e.target.value+"%"; });
+$("#t_status").addEventListener("change",e=>{
+  if(e.target.value==="done"){ $("#t_progress").value=100; $("#t_progress_val").textContent="100%"; }
+  if(e.target.value==="notstarted"){ $("#t_progress").value=0; $("#t_progress_val").textContent="0%"; }
+});
+
+$("#t_save").addEventListener("click",()=>{
+  const name=$("#t_name").value.trim();
+  if(!name){ toast("Give the task a name"); return; }
+  let start=$("#t_start").value, end=$("#t_end").value;
+  if(start && end && end<start){ end=start; }
+  const data={
+    name, phaseId:$("#t_phase").value, tradeId:$("#t_trade").value,
+    start, end, status:$("#t_status").value, progress:+$("#t_progress").value,
+    dependsOn:[...$("#t_depends").selectedOptions].map(o=>o.value),
+    est:+$("#t_est").value||0, actual:+$("#t_actual").value||0,
+    notes:$("#t_notes").value.trim(), photos:workingPhotos.slice()
+  };
+  if(editingTask){ Object.assign(editingTask,data); }
+  else { state.tasks.push({id:uid(),...data}); }
+  save(); closeModal(); renderAll(); toast("Task saved");
+});
+$("#t_delete").addEventListener("click",()=>{
+  if(!editingTask) return;
+  if(!confirm(`Delete “${editingTask.name}”?`)) return;
+  state.tasks=state.tasks.filter(t=>t.id!==editingTask.id);
+  // clean up dependencies
+  state.tasks.forEach(t=>t.dependsOn=(t.dependsOn||[]).filter(d=>d!==editingTask.id));
+  save(); closeModal(); renderAll(); toast("Task deleted");
+});
+
+/* ============================================================
+   TRADE modal
+============================================================ */
+let editingTrade=null;
+function openTrade(id){
+  editingTrade = id? tradeById(id) : null;
+  const t=editingTrade||{type:"",company:"",contact:"",phone:"",email:"",license:"",rate:0,color:randomColor(),notes:""};
+  $("#tradeModalTitle").textContent = editingTrade?"Edit trade":"New trade";
+  $("#r_type").value=t.type; $("#r_company").value=t.company; $("#r_contact").value=t.contact;
+  $("#r_phone").value=t.phone; $("#r_email").value=t.email; $("#r_license").value=t.license||"";
+  $("#r_rate").value=t.rate||""; $("#r_color").value=t.color; $("#r_notes").value=t.notes||"";
+  $("#r_delete").style.display=editingTrade?"":"none";
+  openModal("#tradeModal");
+}
+window.openTrade=openTrade;
+$("#r_save").addEventListener("click",()=>{
+  const type=$("#r_type").value.trim();
+  if(!type){ toast("Enter a trade type"); return; }
+  const data={
+    type, company:$("#r_company").value.trim(), contact:$("#r_contact").value.trim(),
+    phone:$("#r_phone").value.trim(), email:$("#r_email").value.trim(),
+    license:$("#r_license").value.trim(), rate:+$("#r_rate").value||0,
+    color:$("#r_color").value, notes:$("#r_notes").value.trim()
+  };
+  if(editingTrade){ Object.assign(editingTrade,data); }
+  else { state.trades.push({id:uid(),...data}); }
+  save(); closeModal(); renderAll(); toast("Trade saved");
+});
+$("#r_delete").addEventListener("click",()=>{
+  if(!editingTrade) return;
+  const used=state.tasks.filter(t=>t.tradeId===editingTrade.id).length;
+  if(!confirm(`Delete “${editingTrade.company||editingTrade.type}”?${used?`\n${used} task(s) will be unassigned.`:''}`)) return;
+  state.tasks.forEach(t=>{ if(t.tradeId===editingTrade.id) t.tradeId=""; });
+  state.trades=state.trades.filter(t=>t.id!==editingTrade.id);
+  save(); closeModal(); renderAll(); toast("Trade deleted");
+});
+
+/* ============================================================
+   SETTINGS modal
+============================================================ */
+function openSettings(){
+  $("#s_name").value=state.project.name;
+  $("#s_addr").value=state.project.address;
+  $("#s_start").value=state.project.start;
+  $("#s_budget").value=state.project.budget||"";
+  openModal("#settingsModal");
+}
+$("#btnSettings").addEventListener("click",openSettings);
+$("#s_save").addEventListener("click",()=>{
+  state.project.name=$("#s_name").value.trim()||"Untitled Project";
+  state.project.address=$("#s_addr").value.trim();
+  state.project.start=$("#s_start").value;
+  state.project.budget=+$("#s_budget").value||0;
+  save(); closeModal(); renderAll(); toast("Project updated");
+});
+$("#s_reset").addEventListener("click",()=>{
+  if(!confirm("This erases ALL your data and reloads the Ft. Lauderdale sample. Continue?")) return;
+  state=seed(); save(); closeModal(); renderAll(); toast("Reset to sample data");
+});
+
+/* ============================================================
+   Backup / restore
+============================================================ */
+$("#btnExport").addEventListener("click",()=>{
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download=`buildtrack-${(state.project.name||'project').replace(/\W+/g,'-').toLowerCase()}-${todayISO()}.json`;
+  a.click(); URL.revokeObjectURL(a.href);
+  toast("Backup downloaded");
+});
+$("#btnImport").addEventListener("click",()=>$("#importFile").click());
+$("#importFile").addEventListener("change",e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const data=JSON.parse(ev.target.result);
+      if(!data.project||!Array.isArray(data.tasks)) throw new Error("bad file");
+      state=data; save(); renderAll(); toast("Backup restored");
+    }catch(err){ toast("⚠ Not a valid BuildTrack backup"); }
+  };
+  reader.readAsText(f); e.target.value="";
+});
+
+/* ============================================================
+   Modal plumbing
+============================================================ */
+function openModal(sel){ $(sel).classList.add("open"); }
+function closeModal(){ $$(".modal-bg").forEach(m=>m.classList.remove("open")); }
+$$(".modal-bg").forEach(m=>{
+  m.addEventListener("click",e=>{ if(e.target===m) closeModal(); });
+  m.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",closeModal));
+});
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeModal(); });
+
+$("#btnAddTask").addEventListener("click",()=>openTask(null));
+$("#btnAddTaskSched").addEventListener("click",()=>openTask(null));
+$("#btnAddTrade").addEventListener("click",()=>openTrade(null));
+
+/* ============================================================
+   Misc utils
+============================================================ */
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function randomColor(){ const h=Math.floor(Math.random()*360); return `hsl(${h} 60% 55%)`; }
+
+/* ============================================================
+   Render all
+============================================================ */
+function renderAll(){
+  $("#projName").textContent=state.project.name||"Untitled Project";
+  $("#projAddr").textContent=state.project.address||"";
+  renderDashboard();
+  renderGantt();
+  renderTasks();
+  renderTrades();
+  renderBudget();
+}
+renderAll();
+</script>
+</body>
+</html>
