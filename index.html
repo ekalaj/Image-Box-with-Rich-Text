@@ -306,6 +306,10 @@
     <h2 class="section">Construction Loan Draws</h2>
     <p class="sub">Track each draw request against the schedule of values — and see how much you've drawn vs. what you've actually spent.</p>
     <div class="grid cards-4" id="drawStats" style="margin-bottom:18px"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+      <h3 style="margin:0">Schedule of values vs. cost</h3>
+      <button class="btn ghost sm" id="btnEditSov">✎ Edit scheduled values</button>
+    </div>
     <div class="card" style="padding:0;overflow:hidden;margin-bottom:18px">
       <table id="drawCompareTable"></table>
     </div>
@@ -627,6 +631,25 @@
         <span class="muted nowrap" style="font-size:13px">This draw: <b id="d_total">$0</b></span>
         <button class="btn ghost" data-close>Cancel</button>
         <button class="btn" id="d_save">Save draw</button>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<!-- SCHEDULE OF VALUES MODAL -->
+<div class="modal-bg" id="sovModal">
+  <div class="modal">
+    <header><h3>Schedule of values</h3><button class="x" data-close>×</button></header>
+    <div class="body">
+      <p class="muted" style="margin-top:0;font-size:13px">Override the original and revised scheduled value for any line item to match your lender's draw sheet. Leave blank to use the auto value (sum of task estimates).</p>
+      <table id="sov_lines"></table>
+    </div>
+    <footer>
+      <button class="btn ghost danger" id="sov_reset">Reset all to auto</button>
+      <div class="row-actions">
+        <span class="muted nowrap" style="font-size:13px">Revised total: <b id="sov_total">$0</b></span>
+        <button class="btn ghost" data-close>Cancel</button>
+        <button class="btn" id="sov_save">Save</button>
       </div>
     </footer>
   </div>
@@ -1445,60 +1468,75 @@ const drawTotal = d => state.phases.reduce((a,p)=>a+(+(d.lines&&d.lines[p.id])||
 // A funded/approved draw counts as money in hand; submitted/draft is still pending.
 const isDrawn = d => d.status==="funded" || d.status==="approved";
 
-/* per-phase rollup: scheduled value (est), cost spent (actual), drawn (approved+funded) */
+/* Schedule-of-values per phase.
+   autoScheduled = sum of task estimates (the default).
+   phase.sovScheduled overrides the original scheduled value (to match the lender sheet).
+   phase.sovRevised overrides the revised scheduled value (after change orders).
+   The active SOV used for balance-to-finish is: revised ?? scheduled-override ?? auto. */
+const autoScheduled = p => state.tasks.filter(t=>t.phaseId===p.id).reduce((a,t)=>a+(+t.est||0),0);
+const origScheduled = p => (p.sovScheduled!=null && p.sovScheduled!=="") ? +p.sovScheduled : autoScheduled(p);
+const revScheduled  = p => (p.sovRevised!=null && p.sovRevised!=="") ? +p.sovRevised : origScheduled(p);
+
+/* per-phase rollup: scheduled value, revised value, cost spent (actual), drawn (approved+funded) */
 function drawRollup(){
   const rows = state.phases.map(p=>{
     const items = state.tasks.filter(t=>t.phaseId===p.id);
-    const scheduled = items.reduce((a,t)=>a+(+t.est||0),0);
+    const scheduled = origScheduled(p);
+    const revised   = revScheduled(p);
     const spent     = items.reduce((a,t)=>a+(+t.actual||0),0);
     const drawn     = draws().filter(isDrawn).reduce((a,d)=>a+(+(d.lines&&d.lines[p.id])||0),0);
     const pending   = draws().filter(d=>!isDrawn(d)).reduce((a,d)=>a+(+(d.lines&&d.lines[p.id])||0),0);
-    return {phase:p, scheduled, spent, drawn, pending};
-  }).filter(r=>r.scheduled||r.spent||r.drawn||r.pending);
+    return {phase:p, scheduled, revised, spent, drawn, pending};
+  }).filter(r=>r.scheduled||r.revised||r.spent||r.drawn||r.pending);
   const tot = rows.reduce((a,r)=>({
-    scheduled:a.scheduled+r.scheduled, spent:a.spent+r.spent, drawn:a.drawn+r.drawn, pending:a.pending+r.pending
-  }),{scheduled:0,spent:0,drawn:0,pending:0});
+    scheduled:a.scheduled+r.scheduled, revised:a.revised+r.revised,
+    spent:a.spent+r.spent, drawn:a.drawn+r.drawn, pending:a.pending+r.pending
+  }),{scheduled:0,revised:0,spent:0,drawn:0,pending:0});
   return {rows, tot};
 }
 
 function renderDraws(){
   const {rows, tot} = drawRollup();
-  const balance = tot.scheduled - tot.drawn;
+  const sov = tot.revised;              // active schedule of values (revised drives balance)
+  const balance = sov - tot.drawn;
   const gap = tot.drawn - tot.spent;   // drawn minus spent
   const gapColor = gap>=0 ? "#7ee6a6" : "#ff9b91";
   const gapNote = gap>=0 ? "drawn ahead of spend" : "cash fronted vs. loan";
 
   $("#drawStats").innerHTML=`
     ${stat("Drawn to date", money(tot.drawn), `<span class="muted" style="font-size:12px">${tot.pending?money(tot.pending)+" pending":"funded & approved"}</span>`)}
-    ${stat("Schedule of values", money(tot.scheduled), `<div class="bar"><i style="width:${tot.scheduled?Math.min(100,tot.drawn/tot.scheduled*100):0}%"></i></div>`)}
-    ${stat("Balance to finish", money(balance), `<span class="muted" style="font-size:12px">${tot.scheduled?Math.round(tot.drawn/tot.scheduled*100):0}% drawn</span>`)}
+    ${stat("Schedule of values", money(sov), `<div class="bar"><i style="width:${sov?Math.min(100,tot.drawn/sov*100):0}%"></i></div>`)}
+    ${stat("Balance to finish", money(balance), `<span class="muted" style="font-size:12px">${sov?Math.round(tot.drawn/sov*100):0}% drawn</span>`)}
     ${stat("Drawn vs. spent", `<span style="color:${gapColor}">${gap>=0?'+':''}${money(gap)}</span>`, `<span class="muted" style="font-size:12px">${gapNote}</span>`)}
   `;
 
   // comparison table — one row per line item (phase)
   const cmp = rows.map(r=>{
-    const pct = r.scheduled? Math.round(r.drawn/r.scheduled*100) : 0;
-    const bal = r.scheduled - r.drawn;
+    const pct = r.revised? Math.round(r.drawn/r.revised*100) : 0;
+    const bal = r.revised - r.drawn;
+    const revised = r.revised!==r.scheduled
+      ? `<b>${money(r.revised)}</b>` : `<span class="muted">${money(r.revised)}</span>`;
+    const overridden = (r.phase.sovScheduled!=null && r.phase.sovScheduled!=="") || (r.phase.sovRevised!=null && r.phase.sovRevised!=="");
     return `<tr>
-      <td><span class="dot" style="background:${r.phase.color}"></span> ${esc(r.phase.name)}</td>
+      <td><span class="dot" style="background:${r.phase.color}"></span> ${esc(r.phase.name)}${overridden?` <span class="muted" title="Scheduled value set manually" style="font-size:11px">✎</span>`:''}</td>
       <td class="num">${money(r.scheduled)}</td>
+      <td class="num">${revised}</td>
       <td class="num">${money(r.spent)}</td>
-      <td class="num">${money(r.drawn)}${r.pending?`<div class="muted" style="font-size:11px">+${money(r.pending)} pending</div>`:''}</td>
-      <td class="num">${pct}%</td>
+      <td class="num">${money(r.drawn)}${r.pending?`<div class="muted" style="font-size:11px">+${money(r.pending)} pending</div>`:''}<div class="muted" style="font-size:11px">${pct}%</div></td>
       <td class="num">${money(bal)}</td>
       <td class="num">${drawGapCell(r.spent, r.drawn)}</td>
     </tr>`;
   }).join("");
   $("#drawCompareTable").innerHTML=`<thead><tr>
-    <th>Line item</th><th class="num">Scheduled</th><th class="num">Cost spent</th>
-    <th class="num">Drawn</th><th class="num">% Drawn</th><th class="num">Balance</th><th class="num">Drawn − Spent</th>
+    <th>Line item</th><th class="num">Scheduled</th><th class="num">Revised</th><th class="num">Cost spent</th>
+    <th class="num">Drawn</th><th class="num">Balance</th><th class="num">Drawn − Spent</th>
   </tr></thead><tbody>${cmp||`<tr><td colspan="7" class="empty">No budgeted phases yet.</td></tr>`}</tbody>
   <tfoot><tr style="border-top:2px solid var(--line);background:var(--panel2)">
     <td><b>Totals</b></td>
     <td class="num"><b>${money(tot.scheduled)}</b></td>
+    <td class="num"><b>${money(tot.revised)}</b></td>
     <td class="num"><b>${money(tot.spent)}</b></td>
     <td class="num"><b>${money(tot.drawn)}</b></td>
-    <td class="num"><b>${tot.scheduled?Math.round(tot.drawn/tot.scheduled*100):0}%</b></td>
     <td class="num"><b>${money(balance)}</b></td>
     <td class="num"><b>${drawGapCell(tot.spent, tot.drawn)}</b></td>
   </tr></tfoot>`;
@@ -1588,6 +1626,62 @@ function deleteDraw(){
   if(!confirm(`Delete Draw #${editingDraw.number}?`)) return;
   state.draws = draws().filter(d=>d!==editingDraw);
   save(); closeModal(); renderAll(); toast("Draw deleted");
+}
+
+/* ---- Schedule of values editor ---- */
+let sovWork={};
+function openSov(){
+  sovWork={};
+  state.phases.forEach(p=>{ sovWork[p.id]={scheduled:p.sovScheduled??"", revised:p.sovRevised??""}; });
+  renderSovLines();
+  openModal("#sovModal");
+}
+function renderSovLines(){
+  const rows=state.phases.map(p=>{
+    const auto=autoScheduled(p);
+    const w=sovWork[p.id]||{scheduled:"",revised:""};
+    const inp=(field,val,ph)=>`<input type="number" min="0" step="100" data-phase="${ph}" data-field="${field}" value="${val}" placeholder="${money(auto)}"
+      style="width:120px;background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:7px 9px;border-radius:8px;text-align:right" />`;
+    return `<tr>
+      <td><span class="dot" style="background:${p.color}"></span> ${esc(p.name)}
+        <div class="muted" style="font-size:11px">auto ${money(auto)}</div></td>
+      <td class="num" style="width:140px">${inp("scheduled",w.scheduled,p.id)}</td>
+      <td class="num" style="width:140px">${inp("revised",w.revised,p.id)}</td>
+    </tr>`;
+  }).join("");
+  $("#sov_lines").innerHTML=`<thead><tr><th>Line item</th><th class="num">Original</th><th class="num">Revised</th></tr></thead><tbody>${rows||`<tr><td class="empty">No phases.</td></tr>`}</tbody>`;
+  $$("#sov_lines input[data-phase]").forEach(inp=>{
+    inp.addEventListener("input",e=>{
+      const ph=e.target.dataset.phase, f=e.target.dataset.field, v=e.target.value;
+      (sovWork[ph]=sovWork[ph]||{scheduled:"",revised:""})[f]=v;
+      updateSovTotal();
+    });
+  });
+  updateSovTotal();
+}
+function updateSovTotal(){
+  // mirror revScheduled(): revised ?? scheduled-override ?? auto
+  const t=state.phases.reduce((a,p)=>{
+    const w=sovWork[p.id]||{};
+    const rev = (w.revised!=null&&w.revised!=="")? +w.revised
+              : (w.scheduled!=null&&w.scheduled!=="")? +w.scheduled
+              : autoScheduled(p);
+    return a+(+rev||0);
+  },0);
+  $("#sov_total").textContent=money(t);
+}
+function saveSov(){
+  state.phases.forEach(p=>{
+    const w=sovWork[p.id]||{};
+    if(w.scheduled!=null && w.scheduled!=="") p.sovScheduled=+w.scheduled; else delete p.sovScheduled;
+    if(w.revised!=null && w.revised!=="") p.sovRevised=+w.revised; else delete p.sovRevised;
+  });
+  save(); closeModal(); renderAll(); toast("Schedule of values saved");
+}
+function resetSov(){
+  if(!confirm("Clear all manual scheduled-value overrides and use auto values?")) return;
+  state.phases.forEach(p=>{ delete p.sovScheduled; delete p.sovRevised; });
+  save(); closeModal(); renderAll(); toast("Reset to auto values");
 }
 
 /* ============================================================
@@ -1803,6 +1897,9 @@ $("#btnAddTrade").addEventListener("click",()=>openTrade(null));
 $("#btnAddDraw").addEventListener("click",()=>openDraw(null));
 $("#d_save").addEventListener("click",saveDraw);
 $("#d_delete").addEventListener("click",deleteDraw);
+$("#btnEditSov").addEventListener("click",openSov);
+$("#sov_save").addEventListener("click",saveSov);
+$("#sov_reset").addEventListener("click",resetSov);
 
 /* ============================================================
    Misc utils
