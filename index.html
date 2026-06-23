@@ -207,6 +207,7 @@
   <button data-tab="tasks">Tasks &amp; Phases</button>
   <button data-tab="trades">Trades</button>
   <button data-tab="budget">Budget</button>
+  <button data-tab="draws">Draws</button>
   <button data-tab="costref">Cost Reference</button>
 </nav>
 
@@ -298,6 +299,22 @@
     <div class="card" style="padding:0;overflow:hidden">
       <table id="budgetTable"></table>
     </div>
+  </section>
+
+  <!-- DRAWS -->
+  <section class="view" id="view-draws">
+    <h2 class="section">Construction Loan Draws</h2>
+    <p class="sub">Track each draw request against the schedule of values — and see how much you've drawn vs. what you've actually spent.</p>
+    <div class="grid cards-4" id="drawStats" style="margin-bottom:18px"></div>
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:18px">
+      <table id="drawCompareTable"></table>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      <h3 style="margin:0">Draw requests</h3>
+      <button class="btn" id="btnAddDraw">+ New draw</button>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden"><table id="drawListTable"></table></div>
+    <p class="muted" style="font-size:12px;margin-top:10px">Each line item is a build phase. <b>Scheduled value</b> is the phase's estimated cost; <b>cost spent</b> is the actual logged on its tasks. <b>Drawn − spent</b> shows whether you've drawn more from the loan than you've paid out (positive = cash in hand) or less (you've fronted cash).</p>
   </section>
 
   <!-- COST REFERENCE -->
@@ -570,6 +587,51 @@
   </div>
 </div>
 
+<!-- DRAW MODAL -->
+<div class="modal-bg" id="drawModal">
+  <div class="modal">
+    <header><h3 id="drawModalTitle">Draw request</h3><button class="x" data-close>×</button></header>
+    <div class="body">
+      <div class="field-row">
+        <div class="field" style="flex:.5">
+          <label>Draw #</label>
+          <input type="number" id="d_number" min="1" step="1" />
+        </div>
+        <div class="field">
+          <label>Status</label>
+          <select id="d_status">
+            <option value="draft">Draft</option>
+            <option value="submitted">Submitted</option>
+            <option value="approved">Approved</option>
+            <option value="funded">Funded</option>
+          </select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Submitted</label><input type="date" id="d_submitted" /></div>
+        <div class="field"><label>Approved</label><input type="date" id="d_approved" /></div>
+        <div class="field"><label>Funded / disbursed</label><input type="date" id="d_funded" /></div>
+      </div>
+      <div class="field">
+        <label>Note</label>
+        <input id="d_note" placeholder="e.g. Foundation & slab complete — inspection passed" />
+      </div>
+      <hr style="border:none;border-top:1px solid var(--line);margin:6px 0 14px" />
+      <h4 style="margin:0 0 4px">Amounts by line item</h4>
+      <p class="muted" style="font-size:12px;margin:0 0 10px">Enter the amount requested for each phase in this draw. Scheduled value and amount already drawn in other draws are shown for context.</p>
+      <table id="d_lines"></table>
+    </div>
+    <footer>
+      <button class="btn danger" id="d_delete">Delete draw</button>
+      <div class="row-actions">
+        <span class="muted nowrap" style="font-size:13px">This draw: <b id="d_total">$0</b></span>
+        <button class="btn ghost" data-close>Cancel</button>
+        <button class="btn" id="d_save">Save draw</button>
+      </div>
+    </footer>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -710,10 +772,28 @@ function seedProject(){
     T("Final inspection & C.O.","ph_final","tr_gc",150,5,"notstarted",0,0,0,"Target C.O. ~8 weeks out."),
   ];
 
+  // Construction-loan draws taken so far (build is ~day 95, MEP rough-ins).
+  // Each draw allocates dollars to phases (the schedule-of-values line items),
+  // roughly tracking the actual cost logged on completed work.
+  const draws = [
+    {id:uid(), number:1, status:"funded",
+     submitted:D(40), approved:D(44), funded:D(46), note:"Permitting, site work & slab complete — foundation inspection passed.",
+     lines:{ ph_permit:24800, ph_found:46500 }},
+    {id:uid(), number:2, status:"funded",
+     submitted:D(62), approved:D(66), funded:D(69), note:"CBS shell, tie beam & roof trusses set; strap inspection passed.",
+     lines:{ ph_shell:53800, ph_roof:36700 }},
+    {id:uid(), number:3, status:"funded",
+     submitted:D(80), approved:D(84), funded:D(87), note:"Tile roof complete; impact windows dried-in; plumbing rough top-out passed.",
+     lines:{ ph_roof:59000, ph_window:38000, ph_rough:32000 }},
+    {id:uid(), number:4, status:"submitted",
+     submitted:D(94), approved:"", funded:"", note:"Stucco scratch/brown coat in progress — pending lender review.",
+     lines:{ ph_ext:12000 }},
+  ];
+
   return {
     id: uid(),
     project:{ name:"900 Guava", address:"900 Guava St, Fort Lauderdale, FL 33315", start, budget:850000 },
-    phases, trades, tasks
+    phases, trades, tasks, draws
   };
 }
 
@@ -824,7 +904,7 @@ function sampleWaterfront(){
         commissionPct:5, buyer:"Private buyer (cash)", agent:"Coastal Luxury Realty",
         notes:"Listed at completion, sold above ask after ~2 weeks. Closed and funded." }
     },
-    phases, trades, tasks
+    phases, trades, tasks, draws:[]
   };
 }
 
@@ -836,6 +916,7 @@ function sampleWaterfront(){
    keeps using state.phases / state.tasks / state.trades unchanged. */
 let db = load();
 if(!Array.isArray(db.costRef)) db.costRef = seedCostRef();   // backfill for older saves
+db.projects.forEach(p=>{ if(!Array.isArray(p.draws)) p.draws=[]; });  // backfill draws
 let state;
 syncPointer();
 
@@ -1342,6 +1423,174 @@ function diffCell(est,actual){
 }
 
 /* ============================================================
+   DRAWS — construction loan draw tracking vs. actual cost
+============================================================ */
+const DRAW_STATUS = {
+  draft:    {label:"Draft",     cls:"status-notstarted"},
+  submitted:{label:"Submitted", cls:"status-inprogress"},
+  approved: {label:"Approved",  cls:"status-inprogress"},
+  funded:   {label:"Funded",    cls:"status-done"},
+};
+function draws(){ return state.draws || (state.draws=[]); }
+/* Drawn − spent: positive = drawn ahead of spend (cash in hand, green);
+   negative = you've fronted cash the loan hasn't covered yet (amber). */
+function drawGapCell(spent, drawn){
+  const v = drawn - spent;
+  if(!v) return '<span class="muted">—</span>';
+  const c = v>0 ? "#7ee6a6" : "#f5b13d";
+  return `<span style="color:${c}">${v>0?'+':''}${money(v)}</span>`;
+}
+const drawById = id => draws().find(d=>d.id===id);
+const drawTotal = d => state.phases.reduce((a,p)=>a+(+(d.lines&&d.lines[p.id])||0),0);
+// A funded/approved draw counts as money in hand; submitted/draft is still pending.
+const isDrawn = d => d.status==="funded" || d.status==="approved";
+
+/* per-phase rollup: scheduled value (est), cost spent (actual), drawn (approved+funded) */
+function drawRollup(){
+  const rows = state.phases.map(p=>{
+    const items = state.tasks.filter(t=>t.phaseId===p.id);
+    const scheduled = items.reduce((a,t)=>a+(+t.est||0),0);
+    const spent     = items.reduce((a,t)=>a+(+t.actual||0),0);
+    const drawn     = draws().filter(isDrawn).reduce((a,d)=>a+(+(d.lines&&d.lines[p.id])||0),0);
+    const pending   = draws().filter(d=>!isDrawn(d)).reduce((a,d)=>a+(+(d.lines&&d.lines[p.id])||0),0);
+    return {phase:p, scheduled, spent, drawn, pending};
+  }).filter(r=>r.scheduled||r.spent||r.drawn||r.pending);
+  const tot = rows.reduce((a,r)=>({
+    scheduled:a.scheduled+r.scheduled, spent:a.spent+r.spent, drawn:a.drawn+r.drawn, pending:a.pending+r.pending
+  }),{scheduled:0,spent:0,drawn:0,pending:0});
+  return {rows, tot};
+}
+
+function renderDraws(){
+  const {rows, tot} = drawRollup();
+  const balance = tot.scheduled - tot.drawn;
+  const gap = tot.drawn - tot.spent;   // drawn minus spent
+  const gapColor = gap>=0 ? "#7ee6a6" : "#ff9b91";
+  const gapNote = gap>=0 ? "drawn ahead of spend" : "cash fronted vs. loan";
+
+  $("#drawStats").innerHTML=`
+    ${stat("Drawn to date", money(tot.drawn), `<span class="muted" style="font-size:12px">${tot.pending?money(tot.pending)+" pending":"funded & approved"}</span>`)}
+    ${stat("Schedule of values", money(tot.scheduled), `<div class="bar"><i style="width:${tot.scheduled?Math.min(100,tot.drawn/tot.scheduled*100):0}%"></i></div>`)}
+    ${stat("Balance to finish", money(balance), `<span class="muted" style="font-size:12px">${tot.scheduled?Math.round(tot.drawn/tot.scheduled*100):0}% drawn</span>`)}
+    ${stat("Drawn vs. spent", `<span style="color:${gapColor}">${gap>=0?'+':''}${money(gap)}</span>`, `<span class="muted" style="font-size:12px">${gapNote}</span>`)}
+  `;
+
+  // comparison table — one row per line item (phase)
+  const cmp = rows.map(r=>{
+    const pct = r.scheduled? Math.round(r.drawn/r.scheduled*100) : 0;
+    const bal = r.scheduled - r.drawn;
+    return `<tr>
+      <td><span class="dot" style="background:${r.phase.color}"></span> ${esc(r.phase.name)}</td>
+      <td class="num">${money(r.scheduled)}</td>
+      <td class="num">${money(r.spent)}</td>
+      <td class="num">${money(r.drawn)}${r.pending?`<div class="muted" style="font-size:11px">+${money(r.pending)} pending</div>`:''}</td>
+      <td class="num">${pct}%</td>
+      <td class="num">${money(bal)}</td>
+      <td class="num">${drawGapCell(r.spent, r.drawn)}</td>
+    </tr>`;
+  }).join("");
+  $("#drawCompareTable").innerHTML=`<thead><tr>
+    <th>Line item</th><th class="num">Scheduled</th><th class="num">Cost spent</th>
+    <th class="num">Drawn</th><th class="num">% Drawn</th><th class="num">Balance</th><th class="num">Drawn − Spent</th>
+  </tr></thead><tbody>${cmp||`<tr><td colspan="7" class="empty">No budgeted phases yet.</td></tr>`}</tbody>
+  <tfoot><tr style="border-top:2px solid var(--line);background:var(--panel2)">
+    <td><b>Totals</b></td>
+    <td class="num"><b>${money(tot.scheduled)}</b></td>
+    <td class="num"><b>${money(tot.spent)}</b></td>
+    <td class="num"><b>${money(tot.drawn)}</b></td>
+    <td class="num"><b>${tot.scheduled?Math.round(tot.drawn/tot.scheduled*100):0}%</b></td>
+    <td class="num"><b>${money(balance)}</b></td>
+    <td class="num"><b>${drawGapCell(tot.spent, tot.drawn)}</b></td>
+  </tr></tfoot>`;
+
+  // draws list
+  const list = draws().slice().sort((a,b)=>(a.number||0)-(b.number||0)).map(d=>{
+    const st = DRAW_STATUS[d.status]||DRAW_STATUS.draft;
+    const when = d.funded? "Funded "+fmtDShort(d.funded)
+               : d.approved? "Approved "+fmtDShort(d.approved)
+               : d.submitted? "Submitted "+fmtDShort(d.submitted) : "—";
+    return `<tr style="cursor:pointer" onclick="openDraw('${d.id}')">
+      <td><b>Draw #${d.number||"?"}</b>${d.note?`<div class="muted" style="font-size:11px">${esc(d.note)}</div>`:''}</td>
+      <td><span class="pill ${st.cls}">${st.label}</span></td>
+      <td class="muted nowrap">${when}</td>
+      <td class="num"><b>${money(drawTotal(d))}</b></td>
+    </tr>`;
+  }).join("");
+  $("#drawListTable").innerHTML=`<thead><tr>
+    <th>Draw</th><th>Status</th><th>Date</th><th class="num">Amount</th>
+  </tr></thead><tbody>${list||`<tr><td colspan="4" class="empty">No draws yet — click “+ New draw” to request your first disbursement.</td></tr>`}</tbody>`;
+}
+
+/* ---- Draw modal ---- */
+let editingDraw=null, drawWork={};
+function openDraw(id){
+  editingDraw = id? drawById(id) : null;
+  const nextNum = draws().reduce((m,d)=>Math.max(m,+d.number||0),0)+1;
+  const d = editingDraw || {number:nextNum, status:"draft", submitted:todayISO(), approved:"", funded:"", note:"", lines:{}};
+  drawWork = Object.assign({}, d.lines);
+  $("#drawModalTitle").textContent = editingDraw? `Draw #${d.number}` : "New draw";
+  $("#d_number").value=d.number||nextNum;
+  $("#d_status").value=d.status||"draft";
+  $("#d_submitted").value=d.submitted||"";
+  $("#d_approved").value=d.approved||"";
+  $("#d_funded").value=d.funded||"";
+  $("#d_note").value=d.note||"";
+  renderDrawLines();
+  $("#d_delete").style.display = editingDraw? "" : "none";
+  openModal("#drawModal");
+}
+window.openDraw=openDraw;
+
+function renderDrawLines(){
+  const rows = state.phases.map(p=>{
+    const items=state.tasks.filter(t=>t.phaseId===p.id);
+    const scheduled=items.reduce((a,t)=>a+(+t.est||0),0);
+    // drawn elsewhere = sum across OTHER draws for this phase
+    const elsewhere = draws().filter(d=>d!==editingDraw).reduce((a,d)=>a+(+(d.lines&&d.lines[p.id])||0),0);
+    const val = drawWork[p.id]||"";
+    return `<tr>
+      <td><span class="dot" style="background:${p.color}"></span> ${esc(p.name)}
+        <div class="muted" style="font-size:11px">SOV ${money(scheduled)} · drawn ${money(elsewhere)}</div></td>
+      <td class="num" style="width:140px"><input type="number" min="0" step="100" data-phase="${p.id}" value="${val}" placeholder="0"
+        style="width:120px;background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:7px 9px;border-radius:8px;text-align:right" /></td>
+    </tr>`;
+  }).join("");
+  $("#d_lines").innerHTML=`<tbody>${rows||`<tr><td class="empty">Add budgeted phases first.</td></tr>`}</tbody>`;
+  $$("#d_lines input[data-phase]").forEach(inp=>{
+    inp.addEventListener("input", e=>{
+      const ph=e.target.dataset.phase, v=+e.target.value||0;
+      if(v) drawWork[ph]=v; else delete drawWork[ph];
+      updateDrawTotal();
+    });
+  });
+  updateDrawTotal();
+}
+function updateDrawTotal(){
+  const t=state.phases.reduce((a,p)=>a+(+drawWork[p.id]||0),0);
+  $("#d_total").textContent=money(t);
+}
+function saveDraw(){
+  const data={
+    number:+$("#d_number").value||1,
+    status:$("#d_status").value,
+    submitted:$("#d_submitted").value||"",
+    approved:$("#d_approved").value||"",
+    funded:$("#d_funded").value||"",
+    note:$("#d_note").value.trim(),
+    lines:Object.assign({}, drawWork),
+  };
+  if(editingDraw){ Object.assign(editingDraw, data); }
+  else { data.id=uid(); draws().push(data); }
+  save(); closeModal(); renderAll(); toast("Draw saved");
+}
+function deleteDraw(){
+  if(!editingDraw) return;
+  if(!confirm(`Delete Draw #${editingDraw.number}?`)) return;
+  state.draws = draws().filter(d=>d!==editingDraw);
+  save(); closeModal(); renderAll(); toast("Draw deleted");
+}
+
+/* ============================================================
    TASK modal
 ============================================================ */
 let editingTask=null;
@@ -1551,6 +1800,9 @@ document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeModal(); });
 $("#btnAddTask").addEventListener("click",()=>openTask(null));
 $("#btnAddTaskSched").addEventListener("click",()=>openTask(null));
 $("#btnAddTrade").addEventListener("click",()=>openTrade(null));
+$("#btnAddDraw").addEventListener("click",()=>openDraw(null));
+$("#d_save").addEventListener("click",saveDraw);
+$("#d_delete").addEventListener("click",deleteDraw);
 
 /* ============================================================
    Misc utils
@@ -1572,6 +1824,7 @@ function renderAll(){
   renderTasks();
   renderTrades();
   renderBudget();
+  renderDraws();
   renderCostRef();
 }
 
@@ -1744,6 +1997,7 @@ function newProjectFromTemplate(name){
   base.id=uid();
   base.project={name:name||"New Project", address:"", start:todayISO(), budget:0};
   base.tasks=[];
+  base.draws=[];
   return base;
 }
 function addProject(){
