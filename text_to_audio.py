@@ -61,8 +61,12 @@ _INTERCOM_CHAIN = (
 )
 
 
-def apply_intercom(src, dst, chime=True):
-    """Post-process *src* into *dst* with an intercom effect (and optional chime)."""
+def apply_intercom(src, dst, chime=True, crackle=False):
+    """Post-process *src* into *dst* with an intercom effect.
+
+    Optionally prepends a two-tone cabin *chime* and mixes in radio *crackle*
+    (fluctuating band-limited static) under the voice.
+    """
     ffmpeg = find_ffmpeg()
     if not ffmpeg:
         print("ffmpeg not found (pip install imageio-ffmpeg) - skipping intercom "
@@ -71,24 +75,38 @@ def apply_intercom(src, dst, chime=True):
 
     import subprocess
 
+    inputs = ["-i", src]
+    parts = ["[0]" + _INTERCOM_CHAIN + "[vfilt]"]
+    voice = "[vfilt]"
+    idx = 1
+
+    if crackle:
+        # Band-limited, fluctuating static mixed under the voice for a radio feel.
+        inputs += ["-f", "lavfi", "-i", "anoisesrc=color=pink:amplitude=0.5"]
+        parts.append(f"[{idx}]highpass=f=600,lowpass=f=3200,volume=0.08,"
+                     f"tremolo=f=6:d=0.6[noise]")
+        parts.append(f"{voice}[noise]amix=inputs=2:duration=first:normalize=0[vmix]")
+        voice = "[vmix]"
+        idx += 1
+
+    parts.append(f"{voice}aformat=channel_layouts=mono:sample_rates=24000[voice]")
+    voice = "[voice]"
+
     if chime:
-        # Two-tone "ding-dong" cabin chime, then the filtered announcement.
-        cmd = [
-            ffmpeg, "-y", "-i", src,
-            "-f", "lavfi", "-i", "sine=frequency=698:duration=0.7",
-            "-f", "lavfi", "-i", "sine=frequency=523:duration=0.9",
-            "-filter_complex",
-            "[1]afade=t=out:st=0.15:d=0.55,volume=0.5[t1];"
-            "[2]adelay=600|600,afade=t=out:st=0.2:d=0.7,volume=0.5[t2];"
-            "[t1][t2]amix=inputs=2:normalize=0,highpass=f=400,lowpass=f=3000,"
-            "aformat=channel_layouts=mono:sample_rates=24000[chime];"
-            "[0]" + _INTERCOM_CHAIN +
-            ",aformat=channel_layouts=mono:sample_rates=24000[voice];"
-            "[chime][voice]concat=n=2:v=0:a=1[out]",
-            "-map", "[out]", dst,
-        ]
+        # Two-tone "ding-dong" cabin chime ahead of the announcement.
+        inputs += ["-f", "lavfi", "-i", "sine=frequency=698:duration=0.7"]
+        inputs += ["-f", "lavfi", "-i", "sine=frequency=523:duration=0.9"]
+        parts.append(f"[{idx}]afade=t=out:st=0.15:d=0.55,volume=0.5[t1]")
+        parts.append(f"[{idx + 1}]adelay=600|600,afade=t=out:st=0.2:d=0.7,volume=0.5[t2]")
+        parts.append("[t1][t2]amix=inputs=2:normalize=0,highpass=f=400,lowpass=f=3000,"
+                     "aformat=channel_layouts=mono:sample_rates=24000[chime]")
+        parts.append(f"[chime]{voice}concat=n=2:v=0:a=1[out]")
+        out_label = "[out]"
     else:
-        cmd = [ffmpeg, "-y", "-i", src, "-af", _INTERCOM_CHAIN, dst]
+        out_label = voice
+
+    cmd = [ffmpeg, "-y", *inputs, "-filter_complex", ";".join(parts),
+           "-map", out_label, dst]
 
     try:
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL,
@@ -221,6 +239,8 @@ def parse_args(argv=None):
                         help="apply a cabin PA / intercom effect (needs ffmpeg)")
     parser.add_argument("--no-chime", dest="chime", action="store_false",
                         help="with --intercom, skip the two-tone cabin chime")
+    parser.add_argument("--crackle", action="store_true",
+                        help="with --intercom, mix in radio static/crackle")
     parser.set_defaults(chime=True)
     parser.add_argument("-l", "--lang", default="en",
                         help="language code for gTTS (default: en)")
@@ -270,7 +290,7 @@ def main(argv=None):
                  "(pip install edge-tts gTTS pyttsx3) and try again.")
 
     if args.intercom:
-        if apply_intercom(raw_output, output, chime=args.chime):
+        if apply_intercom(raw_output, output, chime=args.chime, crackle=args.crackle):
             try:
                 os.remove(raw_output)
             except OSError:
