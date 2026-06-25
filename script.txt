@@ -1,6 +1,17 @@
-Hello! This is a sample script.
+Attention, this is your captain speaking.
 
-Replace the contents of this file with whatever text you want to turn into audio,
-then run: python text_to_audio.py
+We have an emergency, and we need someone to explain why going viral won't fix a broken sales funnel.
 
-The converter will read this file and generate a speech audio file for you.
+Ladies and gentlemen, please return to your seats and fasten your seatbelts. We're experiencing some turbulence in the marketing department.
+
+Here's your situation report. You've got the views. You've got the likes. You've got a video with a million eyeballs on it. But the numbers in the back? They're not moving. Revenue is flat. The cabin pressure is dropping.
+
+So let me be direct with you, because we don't have a lot of altitude to work with. Going viral is not a destination. It's just traffic. And traffic that lands on a broken funnel doesn't convert, it just bounces.
+
+If your offer isn't clear, no amount of attention will save it. If there's no path from "I saw your video" to "here's my money," you're flying a plane with no runway.
+
+So before you chase the next viral moment, fix what happens after the click. Tighten the offer. Clarify the message. Build the funnel that actually catches the people you worked so hard to attract.
+
+Do that, and going viral finally means something.
+
+This is your captain. Thank you for flying with us. We will now begin our descent.
