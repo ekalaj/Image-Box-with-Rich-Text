@@ -1,0 +1,5 @@
+# Text-to-speech backends for text_to_audio.py.
+# gTTS produces natural MP3 audio but needs internet access.
+gTTS>=2.5.0
+# pyttsx3 is a fully offline engine (uses the system speech synthesizer).
+pyttsx3>=2.90

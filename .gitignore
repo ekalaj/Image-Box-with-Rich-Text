@@ -1,0 +1,9 @@
+# Generated audio output
+speech.mp3
+speech.wav
+*.mp3
+*.wav
+
+# Python
+__pycache__/
+*.pyc

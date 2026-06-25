@@ -1,0 +1,6 @@
+Hello! This is a sample script.
+
+Replace the contents of this file with whatever text you want to turn into audio,
+then run: python text_to_audio.py
+
+The converter will read this file and generate a speech audio file for you.
