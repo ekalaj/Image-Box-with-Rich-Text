@@ -1,5 +1,7 @@
-# Text-to-speech backends for text_to_audio.py.
-# gTTS produces natural MP3 audio but needs internet access.
+# Text-to-speech backends for text_to_audio.py (listed best-quality first).
+# edge-tts: Microsoft neural voices. Best free quality, needs internet, no API key.
+edge-tts>=7.0.0
+# gTTS: Google Text-to-Speech. Decent MP3, needs internet.
 gTTS>=2.5.0
-# pyttsx3 is a fully offline engine (uses the system speech synthesizer).
+# pyttsx3: fully offline engine (uses the system speech synthesizer).
 pyttsx3>=2.90

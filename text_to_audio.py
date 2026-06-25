@@ -2,27 +2,43 @@
 """Read a text script and convert it to an audio file (text-to-speech).
 
 By default the script reads ``script.txt`` from the current directory and
-writes an audio file next to it. Two backends are supported:
+writes an audio file next to it. Three backends are supported:
 
-* ``gtts``    - Google Text-to-Speech. Produces a natural-sounding MP3 but
-                requires an internet connection. (pip install gTTS)
+* ``edge``    - Microsoft Edge neural voices. The best free quality (very
+                natural, many voices) and needs only an internet connection,
+                no API key. Writes an MP3. (pip install edge-tts)
+* ``gtts``    - Google Text-to-Speech. Decent MP3, needs internet.
+                (pip install gTTS)
 * ``pyttsx3`` - Fully offline TTS that uses the system speech engine
                 (eSpeak/NSSpeechSynthesizer/SAPI5). Writes a WAV file.
                 (pip install pyttsx3)
 
-The default backend is ``auto``: it tries gTTS first and falls back to
-pyttsx3 if gTTS is unavailable or fails (e.g. no network).
+The default backend is ``auto``: it tries edge-tts first (best quality),
+then gTTS, then falls back to offline pyttsx3 if there's no network.
+
+List available neural voices with::
+
+    python text_to_audio.py --list-voices
 
 Examples
 --------
     python text_to_audio.py
-    python text_to_audio.py --input script.txt --output speech.mp3
+    python text_to_audio.py --voice en-US-ChristopherNeural
+    python text_to_audio.py --engine gtts --output speech.mp3
     python text_to_audio.py --engine pyttsx3 --output speech.wav
 """
 
 import argparse
 import os
 import sys
+
+# A deep, authoritative voice that suits an in-flight captain announcement.
+DEFAULT_EDGE_VOICE = "en-US-ChristopherNeural"
+
+
+def _https_proxy():
+    """Return the configured HTTPS proxy (if any) for edge-tts to route through."""
+    return os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
 
 
 def read_script(path):
@@ -34,6 +50,51 @@ def read_script(path):
     if not text:
         sys.exit(f"Error: input file is empty: {path}")
     return text
+
+
+def synthesize_edge(text, output, voice=DEFAULT_EDGE_VOICE, rate=None, pitch=None):
+    """Convert *text* to speech with edge-tts (online, neural). Returns True on success."""
+    try:
+        import asyncio
+        import edge_tts
+    except ImportError:
+        print("edge-tts is not installed (pip install edge-tts).", file=sys.stderr)
+        return False
+
+    kwargs = {"voice": voice, "proxy": _https_proxy()}
+    if rate:
+        kwargs["rate"] = rate    # e.g. "+10%" / "-15%"
+    if pitch:
+        kwargs["pitch"] = pitch  # e.g. "+5Hz" / "-10Hz"
+
+    try:
+        async def _run():
+            await edge_tts.Communicate(text, **kwargs).save(output)
+        asyncio.run(_run())
+    except Exception as exc:
+        print(f"edge-tts failed: {exc}", file=sys.stderr)
+        return False
+    return True
+
+
+def list_edge_voices():
+    """Print the available edge-tts neural voices, then return True/False on success."""
+    try:
+        import asyncio
+        import edge_tts
+    except ImportError:
+        print("edge-tts is not installed (pip install edge-tts).", file=sys.stderr)
+        return False
+    try:
+        async def _run():
+            return await edge_tts.list_voices(proxy=_https_proxy())
+        voices = asyncio.run(_run())
+    except Exception as exc:
+        print(f"Could not fetch voices: {exc}", file=sys.stderr)
+        return False
+    for v in sorted(voices, key=lambda x: x["ShortName"]):
+        print(f"{v['ShortName']:<28} {v['Gender']:<8} {v['Locale']}")
+    return True
 
 
 def synthesize_gtts(text, output, lang="en", slow=False):
@@ -86,10 +147,18 @@ def parse_args(argv=None):
                         help="path to the input text file (default: script.txt)")
     parser.add_argument("-o", "--output", default=None,
                         help="path to the output audio file "
-                             "(default: speech.mp3 for gtts, speech.wav for pyttsx3)")
+                             "(default: speech.mp3, or speech.wav for pyttsx3)")
     parser.add_argument("-e", "--engine", default="auto",
-                        choices=["auto", "gtts", "pyttsx3"],
-                        help="TTS backend to use (default: auto)")
+                        choices=["auto", "edge", "gtts", "pyttsx3"],
+                        help="TTS backend to use (default: auto -> edge, gtts, pyttsx3)")
+    parser.add_argument("-v", "--voice", default=DEFAULT_EDGE_VOICE,
+                        help=f"neural voice for edge-tts (default: {DEFAULT_EDGE_VOICE})")
+    parser.add_argument("--list-voices", action="store_true",
+                        help="list available edge-tts neural voices and exit")
+    parser.add_argument("--edge-rate", default=None,
+                        help="edge-tts speaking rate, e.g. +10%% or -15%%")
+    parser.add_argument("--edge-pitch", default=None,
+                        help="edge-tts pitch, e.g. +5Hz or -10Hz")
     parser.add_argument("-l", "--lang", default="en",
                         help="language code for gTTS (default: en)")
     parser.add_argument("--slow", action="store_true",
@@ -103,23 +172,34 @@ def parse_args(argv=None):
 
 def main(argv=None):
     args = parse_args(argv)
+
+    if args.list_voices:
+        sys.exit(0 if list_edge_voices() else 1)
+
     text = read_script(args.input)
     output = args.output or default_output(args.engine)
 
-    if args.engine == "gtts":
+    if args.engine == "edge":
+        ok = synthesize_edge(text, output, voice=args.voice,
+                             rate=args.edge_rate, pitch=args.edge_pitch)
+    elif args.engine == "gtts":
         ok = synthesize_gtts(text, output, lang=args.lang, slow=args.slow)
     elif args.engine == "pyttsx3":
         ok = synthesize_pyttsx3(text, output, rate=args.rate, volume=args.volume)
-    else:  # auto: try online gTTS first, fall back to offline pyttsx3
-        ok = synthesize_gtts(text, output, lang=args.lang, slow=args.slow)
+    else:  # auto: best quality first, degrade gracefully to offline
+        ok = synthesize_edge(text, output, voice=args.voice,
+                             rate=args.edge_rate, pitch=args.edge_pitch)
+        if not ok:
+            print("Falling back to gTTS engine...", file=sys.stderr)
+            ok = synthesize_gtts(text, output, lang=args.lang, slow=args.slow)
         if not ok:
             output = args.output or default_output("pyttsx3")
             print("Falling back to offline pyttsx3 engine...", file=sys.stderr)
             ok = synthesize_pyttsx3(text, output, rate=args.rate, volume=args.volume)
 
     if not ok:
-        sys.exit("Error: could not generate audio. Install gTTS or pyttsx3 "
-                 "(pip install gTTS pyttsx3) and try again.")
+        sys.exit("Error: could not generate audio. Install a backend "
+                 "(pip install edge-tts gTTS pyttsx3) and try again.")
 
     print(f"Audio written to {output}")
 
