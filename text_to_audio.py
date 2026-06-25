@@ -51,13 +51,13 @@ def find_ffmpeg():
         return shutil.which("ffmpeg")
 
 
-# ffmpeg filter that makes a clean voice track sound like a cabin PA / intercom:
-# telephone-band EQ, speaker crunch, punchy compression and a hard limiter.
+# ffmpeg filter that makes a clean voice track sound like a cabin PA / intercom.
+# Kept deliberately gentle (wide band, light compression, no bit-crusher) so the
+# voice still sounds human rather than robotic.
 _INTERCOM_CHAIN = (
-    "highpass=f=500,lowpass=f=3000,"
-    "acompressor=threshold=-18dB:ratio=6:attack=5:release=60,"
-    "acrusher=bits=12:mode=log:aa=0.3,"
-    "volume=6dB,alimiter=limit=0.95"
+    "highpass=f=300,lowpass=f=3400,"
+    "acompressor=threshold=-16dB:ratio=3:attack=10:release=80,"
+    "volume=4dB,alimiter=limit=0.97"
 )
 
 
