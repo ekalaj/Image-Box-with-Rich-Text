@@ -41,6 +41,64 @@ def _https_proxy():
     return os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
 
 
+def find_ffmpeg():
+    """Locate an ffmpeg executable (bundled imageio-ffmpeg or one on PATH)."""
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        import shutil
+        return shutil.which("ffmpeg")
+
+
+# ffmpeg filter that makes a clean voice track sound like a cabin PA / intercom:
+# telephone-band EQ, speaker crunch, punchy compression and a hard limiter.
+_INTERCOM_CHAIN = (
+    "highpass=f=500,lowpass=f=3000,"
+    "acompressor=threshold=-18dB:ratio=6:attack=5:release=60,"
+    "acrusher=bits=12:mode=log:aa=0.3,"
+    "volume=6dB,alimiter=limit=0.95"
+)
+
+
+def apply_intercom(src, dst, chime=True):
+    """Post-process *src* into *dst* with an intercom effect (and optional chime)."""
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        print("ffmpeg not found (pip install imageio-ffmpeg) - skipping intercom "
+              "effect.", file=sys.stderr)
+        return False
+
+    import subprocess
+
+    if chime:
+        # Two-tone "ding-dong" cabin chime, then the filtered announcement.
+        cmd = [
+            ffmpeg, "-y", "-i", src,
+            "-f", "lavfi", "-i", "sine=frequency=698:duration=0.7",
+            "-f", "lavfi", "-i", "sine=frequency=523:duration=0.9",
+            "-filter_complex",
+            "[1]afade=t=out:st=0.15:d=0.55,volume=0.5[t1];"
+            "[2]adelay=600|600,afade=t=out:st=0.2:d=0.7,volume=0.5[t2];"
+            "[t1][t2]amix=inputs=2:normalize=0,highpass=f=400,lowpass=f=3000,"
+            "aformat=channel_layouts=mono:sample_rates=24000[chime];"
+            "[0]" + _INTERCOM_CHAIN +
+            ",aformat=channel_layouts=mono:sample_rates=24000[voice];"
+            "[chime][voice]concat=n=2:v=0:a=1[out]",
+            "-map", "[out]", dst,
+        ]
+    else:
+        cmd = [ffmpeg, "-y", "-i", src, "-af", _INTERCOM_CHAIN, dst]
+
+    try:
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL)
+    except Exception as exc:
+        print(f"Intercom processing failed: {exc}", file=sys.stderr)
+        return False
+    return True
+
+
 def read_script(path):
     """Return the trimmed contents of *path* or exit with a clear error."""
     if not os.path.isfile(path):
@@ -159,6 +217,11 @@ def parse_args(argv=None):
                         help="edge-tts speaking rate, e.g. +10%% or -15%%")
     parser.add_argument("--edge-pitch", default=None,
                         help="edge-tts pitch, e.g. +5Hz or -10Hz")
+    parser.add_argument("--intercom", action="store_true",
+                        help="apply a cabin PA / intercom effect (needs ffmpeg)")
+    parser.add_argument("--no-chime", dest="chime", action="store_false",
+                        help="with --intercom, skip the two-tone cabin chime")
+    parser.set_defaults(chime=True)
     parser.add_argument("-l", "--lang", default="en",
                         help="language code for gTTS (default: en)")
     parser.add_argument("--slow", action="store_true",
@@ -179,27 +242,42 @@ def main(argv=None):
     text = read_script(args.input)
     output = args.output or default_output(args.engine)
 
+    # With --intercom we synthesize to a temp file, then post-process into output.
+    raw_output = output
+    if args.intercom:
+        base, ext = os.path.splitext(output)
+        raw_output = base + ".raw" + (ext or ".mp3")
+
     if args.engine == "edge":
-        ok = synthesize_edge(text, output, voice=args.voice,
+        ok = synthesize_edge(text, raw_output, voice=args.voice,
                              rate=args.edge_rate, pitch=args.edge_pitch)
     elif args.engine == "gtts":
-        ok = synthesize_gtts(text, output, lang=args.lang, slow=args.slow)
+        ok = synthesize_gtts(text, raw_output, lang=args.lang, slow=args.slow)
     elif args.engine == "pyttsx3":
-        ok = synthesize_pyttsx3(text, output, rate=args.rate, volume=args.volume)
+        ok = synthesize_pyttsx3(text, raw_output, rate=args.rate, volume=args.volume)
     else:  # auto: best quality first, degrade gracefully to offline
-        ok = synthesize_edge(text, output, voice=args.voice,
+        ok = synthesize_edge(text, raw_output, voice=args.voice,
                              rate=args.edge_rate, pitch=args.edge_pitch)
         if not ok:
             print("Falling back to gTTS engine...", file=sys.stderr)
-            ok = synthesize_gtts(text, output, lang=args.lang, slow=args.slow)
+            ok = synthesize_gtts(text, raw_output, lang=args.lang, slow=args.slow)
         if not ok:
-            output = args.output or default_output("pyttsx3")
             print("Falling back to offline pyttsx3 engine...", file=sys.stderr)
-            ok = synthesize_pyttsx3(text, output, rate=args.rate, volume=args.volume)
+            ok = synthesize_pyttsx3(text, raw_output, rate=args.rate, volume=args.volume)
 
     if not ok:
         sys.exit("Error: could not generate audio. Install a backend "
                  "(pip install edge-tts gTTS pyttsx3) and try again.")
+
+    if args.intercom:
+        if apply_intercom(raw_output, output, chime=args.chime):
+            try:
+                os.remove(raw_output)
+            except OSError:
+                pass
+        else:
+            output = raw_output  # effect failed; keep the clean audio
+            print("Kept the un-filtered audio instead.", file=sys.stderr)
 
     print(f"Audio written to {output}")
 

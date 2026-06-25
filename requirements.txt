@@ -5,3 +5,5 @@ edge-tts>=7.0.0
 gTTS>=2.5.0
 # pyttsx3: fully offline engine (uses the system speech synthesizer).
 pyttsx3>=2.90
+# imageio-ffmpeg: bundles an ffmpeg binary for the --intercom effect (optional).
+imageio-ffmpeg>=0.5.0
